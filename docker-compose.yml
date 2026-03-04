@@ -1,0 +1,89 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: streamline-backend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - JWT_SECRET=${JWT_SECRET}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost}
+      - DB_PATH=/app/data/streamline.db
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - BOT_URL=http://bot:3002
+      - BOT_SECRET=${BOT_SECRET}
+    volumes:
+      - streamline_data:/app/data
+      - streamline_logs:/app/logs
+    networks:
+      - streamline_internal
+    expose:
+      - "3001"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3001/api/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp
+
+  bot:
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    container_name: streamline-bot
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+      - STREAMLINE_API_URL=http://backend:3001/api
+      - STREAMLINE_BOT_USER=${STREAMLINE_BOT_USER}
+      - STREAMLINE_BOT_PASS=${STREAMLINE_BOT_PASS}
+      - BOT_SECRET=${BOT_SECRET}
+      - BOT_PORT=3002
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    networks:
+      - streamline_internal
+    expose:
+      - "3002"
+    depends_on:
+      backend:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: streamline-frontend
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-7878}:80"
+    networks:
+      - streamline_internal
+    depends_on:
+      backend:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  streamline_data:
+    driver: local
+  streamline_logs:
+    driver: local
+
+networks:
+  streamline_internal:
+    driver: bridge
+    internal: false
