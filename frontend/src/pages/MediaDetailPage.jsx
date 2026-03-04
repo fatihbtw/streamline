@@ -48,21 +48,19 @@ export default function MediaDetailPage() {
   }, [id]);
 
   const handleDelete = async () => {
-    if (!window.confirm(`"${item.title}" wirklich aus der Mediathek entfernen?`)) return;
+    if (!window.confirm(`Remove "${item.title}" from library?`)) return;
     try {
       await api.delete(`/media/${id}`);
-      toast.success('Entfernt');
+      toast.success('Removed from library');
       navigate('/library');
-    } catch { toast.error('Fehler beim Entfernen'); }
+    } catch { toast.error('Failed to remove'); }
   };
 
-  if (loading) return <div style={{ color: '#4b5563', padding: '40px', textAlign: 'center' }}>Lade...</div>;
+  if (loading) return <div style={{ color: '#4b5563', padding: '40px', textAlign: 'center' }}>Loading...</div>;
   if (!item) return null;
 
   const statusClass = { wanted: 'status-wanted', downloaded: 'status-downloaded', downloading: 'status-downloading', missing: 'status-missing' };
   const epClass = { wanted: 'ep-wanted', downloaded: 'ep-downloaded', unaired: 'ep-unaired' };
-
-  // Group episodes by season
   const seasons = {};
   if (item.episodes) {
     for (const ep of item.episodes) {
@@ -74,47 +72,35 @@ export default function MediaDetailPage() {
   return (
     <>
       <style>{styles}</style>
-      <button className="back-btn" onClick={() => navigate(-1)}>
-        <ArrowLeft size={16} /> Zurück
-      </button>
-
+      <button className="back-btn" onClick={() => navigate(-1)}><ArrowLeft size={16} /> Back</button>
       <div className="detail-hero">
         <div className="detail-poster">
           {item.poster_url
             ? <img src={item.poster_url} alt={item.title} />
-            : <div className="detail-poster-ph">{item.type === 'movie' ? <Film size={48} color="#2a2a4e" /> : <Tv size={48} color="#2a2a4e" />}</div>
-          }
+            : <div className="detail-poster-ph">{item.type === 'movie' ? <Film size={48} color="#2a2a4e" /> : <Tv size={48} color="#2a2a4e" />}</div>}
         </div>
-
         <div className="detail-info">
           <div className="detail-title">{item.title}</div>
           <div className="detail-meta">
             {item.year && <span className="meta-item"><Calendar size={14} />{item.year}</span>}
             {item.rating && <span className="meta-item"><Star size={14} color="#f59e0b" fill="#f59e0b" />{item.rating.toFixed(1)}</span>}
-            <span className="meta-item">{item.type === 'movie' ? <Film size={14} /> : <Tv size={14} />}{item.type === 'movie' ? 'Film' : 'Serie'}</span>
+            <span className="meta-item">{item.type === 'movie' ? <Film size={14} /> : <Tv size={14} />}{item.type === 'movie' ? 'Movie' : 'TV Show'}</span>
             <span className={`status-badge ${statusClass[item.status] || ''}`}>{item.status}</span>
           </div>
           {item.overview && <div className="detail-overview">{item.overview}</div>}
           <div className="detail-actions">
-            <button className="action-primary" onClick={() => setShowNzb(true)}>
-              <Search size={14} /> NZB suchen
-            </button>
-            <button className="action-danger" onClick={handleDelete}>
-              <Trash2 size={14} /> Entfernen
-            </button>
+            <button className="action-primary" onClick={() => setShowNzb(true)}><Search size={14} /> Search NZB</button>
+            <button className="action-danger" onClick={handleDelete}><Trash2 size={14} /> Remove</button>
           </div>
         </div>
       </div>
-
       {Object.keys(seasons).length > 0 && (
         <div className="seasons-section">
           {Object.entries(seasons).map(([season, eps]) => (
             <div key={season} style={{ marginBottom: '24px' }}>
-              <div className="season-title">Staffel {season}</div>
+              <div className="season-title">Season {season}</div>
               <table className="episodes-table">
-                <thead>
-                  <tr><th>#</th><th>Titel</th><th>Ausstrahlung</th><th>Status</th></tr>
-                </thead>
+                <thead><tr><th>#</th><th>Title</th><th>Air Date</th><th>Status</th></tr></thead>
                 <tbody>
                   {eps.map(ep => (
                     <tr key={ep.id}>

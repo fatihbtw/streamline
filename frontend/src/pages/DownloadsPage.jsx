@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Pause, Play, Trash2, RefreshCw, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { Download, Pause, Play, Trash2, RefreshCw, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 
@@ -41,10 +41,9 @@ export default function DownloadsPage() {
   const fetchData = async () => {
     try {
       const res = await api.get('/downloads/sabnzbd');
-      setSabData(res.data);
-      setSabError(null);
+      setSabData(res.data); setSabError(null);
     } catch (err) {
-      setSabError(err.response?.data?.error || 'Verbindung fehlgeschlagen');
+      setSabError(err.response?.data?.error || 'Connection failed');
     } finally { setLoading(false); }
   };
 
@@ -53,9 +52,9 @@ export default function DownloadsPage() {
   const doAction = async (action, nzo_id) => {
     try {
       await api.post('/downloads/sabnzbd/action', { action, nzo_id });
-      toast.success(`Aktion "${action}" ausgeführt`);
+      toast.success(`Action "${action}" executed`);
       fetchData();
-    } catch { toast.error('Aktion fehlgeschlagen'); }
+    } catch { toast.error('Action failed'); }
   };
 
   return (
@@ -63,31 +62,17 @@ export default function DownloadsPage() {
       <style>{styles}</style>
       <div className="dl-header">
         <div className="dl-title">Downloads</div>
-        <button className="dl-refresh" onClick={fetchData}>
-          <RefreshCw size={14} /> Aktualisieren
-        </button>
+        <button className="dl-refresh" onClick={fetchData}><RefreshCw size={14} /> Refresh</button>
       </div>
 
-      <div className="section-title">
-        <div className="live-dot" />
-        SABnzbd — Live-Queue
-      </div>
+      <div className="section-title"><div className="live-dot" />SABnzbd — Live Queue</div>
 
-      {loading ? <div className="empty-box">Lade...</div>
-        : sabError ? <div className="not-configured">⚠️ {sabError} — SABnzbd in den <a href="/settings" style={{ color: '#6366f1' }}>Einstellungen</a> konfigurieren.</div>
-        : sabData?.queue?.length === 0 ? <div className="empty-box">Queue ist leer</div>
+      {loading ? <div className="empty-box">Loading...</div>
+        : sabError ? <div className="not-configured">⚠️ {sabError} — Configure SABnzbd in <a href="/settings" style={{ color: '#6366f1' }}>Settings</a>.</div>
+        : sabData?.queue?.length === 0 ? <div className="empty-box">Queue is empty</div>
         : (
         <table className="queue-table">
-          <thead>
-            <tr>
-              <th>Datei</th>
-              <th>Fortschritt</th>
-              <th>Größe</th>
-              <th>ETA</th>
-              <th>Status</th>
-              <th>Aktionen</th>
-            </tr>
-          </thead>
+          <thead><tr><th>File</th><th>Progress</th><th>Size</th><th>ETA</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>
             {(sabData?.queue || []).map(item => (
               <tr key={item.id}>
@@ -101,9 +86,9 @@ export default function DownloadsPage() {
                 <td><span className={`status-badge ${statusClass(item.status)}`}>{item.status}</span></td>
                 <td>
                   <div style={{ display: 'flex', gap: '4px' }}>
-                    <button className="action-btn" onClick={() => doAction('pause', item.id)} title="Pausieren"><Pause size={14} color="#6b7280" /></button>
-                    <button className="action-btn" onClick={() => doAction('resume', item.id)} title="Fortsetzen"><Play size={14} color="#6b7280" /></button>
-                    <button className="action-btn" onClick={() => doAction('delete', item.id)} title="Löschen"><Trash2 size={14} color="#ef4444" /></button>
+                    <button className="action-btn" onClick={() => doAction('pause', item.id)} title="Pause"><Pause size={14} color="#6b7280" /></button>
+                    <button className="action-btn" onClick={() => doAction('resume', item.id)} title="Resume"><Play size={14} color="#6b7280" /></button>
+                    <button className="action-btn" onClick={() => doAction('delete', item.id)} title="Delete"><Trash2 size={14} color="#ef4444" /></button>
                   </div>
                 </td>
               </tr>
@@ -114,11 +99,9 @@ export default function DownloadsPage() {
 
       {sabData?.history?.length > 0 && (
         <>
-          <div className="section-title"><CheckCircle size={16} color="#10b981" />Verlauf</div>
+          <div className="section-title"><CheckCircle size={16} color="#10b981" />History</div>
           <table className="queue-table">
-            <thead>
-              <tr><th>Datei</th><th>Größe</th><th>Status</th></tr>
-            </thead>
+            <thead><tr><th>File</th><th>Size</th><th>Status</th></tr></thead>
             <tbody>
               {sabData.history.map(item => (
                 <tr key={item.id}>

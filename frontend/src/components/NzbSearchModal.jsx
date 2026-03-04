@@ -77,14 +77,14 @@ function NzbRow({ item }) {
   const [sending, setSending] = useState(false);
 
   const sendToSab = async () => {
-    if (!item.link) { toast.error('Kein Download-Link verfügbar'); return; }
+    if (!item.link) { toast.error('No download link available'); return; }
     setSending(true);
     try {
       await api.post('/downloads/send-nzb', { nzb_url: item.link });
       setSent(true);
-      toast.success('An SABnzbd gesendet!');
+      toast.success('Sent to SABnzbd!');
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Senden fehlgeschlagen — SABnzbd konfiguriert?');
+      toast.error(err.response?.data?.error || 'Send failed — is SABnzbd configured?');
     } finally {
       setSending(false);
     }
@@ -107,7 +107,7 @@ function NzbRow({ item }) {
         </div>
       </div>
       <button className={`nzb-send-btn ${sent ? 'sent' : ''}`} onClick={sendToSab} disabled={sent || sending}>
-        {sent ? '✓ Gesendet' : sending ? 'Sende...' : <><Download size={12} />SABnzbd</>}
+        {sent ? '✓ Sent' : sending ? 'Sending...' : <><Download size={12} />SABnzbd</>}
       </button>
     </div>
   );
@@ -130,7 +130,7 @@ export default function NzbSearchModal({ title, onClose }) {
       const res = await api.get('/search/nzb', { params: { q: query } });
       setResults(res.data.results || []);
     } catch (err) {
-      setError(err.response?.data?.error || 'Suche fehlgeschlagen — Indexer in den Einstellungen prüfen.');
+      setError(err.response?.data?.error || 'Suche fehlgeschlagen — Indexer in den Settings prüfen.');
       setResults([]);
     } finally {
       setLoading(false);
@@ -149,7 +149,7 @@ export default function NzbSearchModal({ title, onClose }) {
         <div className="nzb-modal">
           <div className="nzb-header">
             <div>
-              <div className="nzb-title">NZB Suche</div>
+              <div className="nzb-title">NZB Search</div>
               <div className="nzb-subtitle">via NZBHydra2 / Newznab</div>
             </div>
             <button className="nzb-close" onClick={onClose}><X size={18} /></button>
@@ -160,11 +160,11 @@ export default function NzbSearchModal({ title, onClose }) {
               className="nzb-input"
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="Suchbegriff..."
+              placeholder="Search term..."
               autoFocus
             />
             <button className="nzb-search-btn" type="submit" disabled={loading || !query.trim()}>
-              <Search size={14} />{loading ? 'Suche...' : 'Suchen'}
+              <Search size={14} />{loading ? 'Searching...' : 'Search'}
             </button>
           </form>
 
@@ -172,21 +172,21 @@ export default function NzbSearchModal({ title, onClose }) {
             {error && (
               <div className="nzb-error">
                 <AlertCircle size={16} />
-                {error} — NZBHydra2 in den <a href="/settings" style={{ color: '#6366f1' }}>Einstellungen</a> konfigurieren.
+                {error} — Configure NZBHydra2 in <a href="/settings" style={{ color: '#6366f1' }}>Settings</a> in Settings.
               </div>
             )}
             {!error && !loading && searched && results.length === 0 && (
-              <div className="nzb-empty">Keine Ergebnisse für „{query}"</div>
+              <div className="nzb-empty">No results for „{query}"</div>
             )}
             {!searched && !loading && (
-              <div className="nzb-empty">Suche wird gestartet...</div>
+              <div className="nzb-empty">Starting search...</div>
             )}
-            {loading && <div className="nzb-empty">Suche läuft...</div>}
+            {loading && <div className="nzb-empty">Searching...</div>}
             {results.map((item, i) => <NzbRow key={i} item={item} />)}
           </div>
 
           {results.length > 0 && (
-            <div className="nzb-footer">{results.length} Ergebnis{results.length !== 1 ? 'se' : ''} gefunden</div>
+            <div className="nzb-footer">{results.length} result{results.length !== 1 ? 'se' : ''} found</div>
           )}
         </div>
       </div>

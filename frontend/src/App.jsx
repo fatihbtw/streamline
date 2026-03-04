@@ -12,6 +12,7 @@ import SearchPage from './pages/SearchPage';
 import DownloadsPage from './pages/DownloadsPage';
 import SettingsPage from './pages/SettingsPage';
 import MediaDetailPage from './pages/MediaDetailPage';
+import ImportPage from './pages/ImportPage';
 
 function ProtectedRoute({ children }) {
   const token = useAuthStore(s => s.token);
@@ -68,6 +69,7 @@ export default function App() {
           <Route path="search" element={<SearchPage />} />
           <Route path="downloads" element={<DownloadsPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="import" element={<ImportPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>

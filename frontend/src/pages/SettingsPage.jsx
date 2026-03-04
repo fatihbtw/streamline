@@ -55,11 +55,11 @@ export default function SettingsPage() {
   const [hydraKey, setHydraKey] = useState('');
   const [moviesPath, setMoviesPath] = useState('/downloads/movies');
   const [seriesPath, setSeriesPath] = useState('/downloads/series');
-  const [indexers, setIndexers] = useState([]);
+  const [indexers, setIndexerss] = useState([]);
   const [sabTest, setSabTest] = useState(null);
   const [hydraTest, setHydraTest] = useState(null);
-  const [showAddIndexer, setShowAddIndexer] = useState(false);
-  const [newIndexer, setNewIndexer] = useState({ name: '', type: 'torznab', url: '', api_key: '' });
+  const [showAddIndexers, setShowAddIndexers] = useState(false);
+  const [newIndexers, setNewIndexers] = useState({ name: '', type: 'torznab', url: '', api_key: '' });
 
   useEffect(() => {
     api.get('/settings').then(r => {
@@ -70,14 +70,14 @@ export default function SettingsPage() {
       if (s.download_path_movies) setMoviesPath(s.download_path_movies);
       if (s.download_path_series) setSeriesPath(s.download_path_series);
     }).catch(() => {});
-    api.get('/settings/indexers').then(r => setIndexers(r.data)).catch(() => {});
+    api.get('/settings/indexers').then(r => setIndexerss(r.data)).catch(() => {});
   }, []);
 
   const saveSetting = async (key, value) => {
     try {
       await api.put('/settings', { key, value });
-      toast.success('Gespeichert');
-    } catch { toast.error('Speichern fehlgeschlagen'); }
+      toast.success('Saved');
+    } catch { toast.error('Save fehlgeschlagen'); }
   };
 
   const testConnection = async (type) => {
@@ -90,34 +90,34 @@ export default function SettingsPage() {
       setter({ ok: res.data.success, msg: res.data.message });
     } catch (err) {
       const setter = type === 'sabnzbd' ? setSabTest : setHydraTest;
-      setter({ ok: false, msg: err.response?.data?.message || 'Verbindung fehlgeschlagen' });
+      setter({ ok: false, msg: err.response?.data?.message || 'Connection failed' });
     }
   };
 
-  const addIndexer = async () => {
-    if (!newIndexer.name || !newIndexer.url) { toast.error('Name und URL erforderlich'); return; }
+  const addIndexers = async () => {
+    if (!newIndexers.name || !newIndexers.url) { toast.error('Name und URL erforderlich'); return; }
     try {
-      await api.post('/settings/indexers', newIndexer);
+      await api.post('/settings/indexers', newIndexers);
       const res = await api.get('/settings/indexers');
-      setIndexers(res.data);
-      setShowAddIndexer(false);
-      setNewIndexer({ name: '', type: 'torznab', url: '', api_key: '' });
-      toast.success('Indexer hinzugefügt');
-    } catch { toast.error('Hinzufügen fehlgeschlagen'); }
+      setIndexerss(res.data);
+      setShowAddIndexers(false);
+      setNewIndexers({ name: '', type: 'torznab', url: '', api_key: '' });
+      toast.success('Indexers hinzugefügt');
+    } catch { toast.error('Add fehlgeschlagen'); }
   };
 
-  const deleteIndexer = async (id) => {
+  const deleteIndexers = async (id) => {
     try {
       await api.delete(`/settings/indexers/${id}`);
-      setIndexers(prev => prev.filter(i => i.id !== id));
-      toast.success('Indexer entfernt');
+      setIndexerss(prev => prev.filter(i => i.id !== id));
+      toast.success('Indexers entfernt');
     } catch { toast.error('Fehler'); }
   };
 
   return (
     <>
       <style>{styles}</style>
-      <div className="settings-title">Einstellungen</div>
+      <div className="settings-title">Settings</div>
       <div className="settings-sections">
 
         {/* TMDB */}
@@ -129,7 +129,7 @@ export default function SettingsPage() {
           </div>
           <div className="btn-row">
             <button className="btn-save" onClick={() => saveSetting('tmdb_api_key', tmdbKey)}>
-              <Save size={14} /> Speichern
+              <Save size={14} /> Save
             </button>
             <span style={{ fontSize: '12px', color: '#4b5563', alignSelf: 'center' }}>
               API Key auf <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer" style={{ color: '#6366f1' }}>themoviedb.org</a> erstellen
@@ -157,10 +157,10 @@ export default function SettingsPage() {
           )}
           <div className="btn-row" style={{ marginTop: '12px' }}>
             <button className="btn-save" onClick={async () => { await saveSetting('sabnzbd_url', sabUrl); await saveSetting('sabnzbd_api_key', sabKey); }}>
-              <Save size={14} /> Speichern
+              <Save size={14} /> Save
             </button>
             <button className="btn-test" onClick={() => testConnection('sabnzbd')}>
-              <TestTube size={14} /> Verbindung testen
+              <TestTube size={14} /> Test Connection
             </button>
           </div>
         </div>
@@ -185,20 +185,20 @@ export default function SettingsPage() {
           )}
           <div className="btn-row" style={{ marginTop: '12px' }}>
             <button className="btn-save" onClick={async () => { await saveSetting('hydra2_url', hydraUrl); await saveSetting('hydra2_api_key', hydraKey); }}>
-              <Save size={14} /> Speichern
+              <Save size={14} /> Save
             </button>
             <button className="btn-test" onClick={() => testConnection('hydra')}>
-              <TestTube size={14} /> Verbindung testen
+              <TestTube size={14} /> Test Connection
             </button>
           </div>
         </div>
 
         {/* Download Paths */}
         <div className="settings-card">
-          <div className="card-title">📁 Download-Pfade</div>
+          <div className="card-title">📁 Download Pathe</div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Filme</label>
+              <label className="form-label">Movies</label>
               <input className="form-input" value={moviesPath} onChange={e => setMoviesPath(e.target.value)} />
             </div>
             <div className="form-group">
@@ -207,36 +207,36 @@ export default function SettingsPage() {
             </div>
           </div>
           <button className="btn-save" onClick={async () => { await saveSetting('download_path_movies', moviesPath); await saveSetting('download_path_series', seriesPath); }}>
-            <Save size={14} /> Speichern
+            <Save size={14} /> Save
           </button>
         </div>
 
-        {/* Indexers */}
+        {/* Indexerss */}
         <div className="settings-card">
-          <div className="card-title">🌐 Torrent-Indexer</div>
+          <div className="card-title">🌐 Torrent Indexerss</div>
           <div className="indexer-list">
-            {indexers.length === 0 && <div style={{ color: '#4b5563', fontSize: '14px' }}>Noch keine Indexer konfiguriert</div>}
+            {indexers.length === 0 && <div style={{ color: '#4b5563', fontSize: '14px' }}>Noch keine Indexers konfiguriert</div>}
             {indexers.map(idx => (
               <div key={idx.id} className="indexer-row">
                 <span className="indexer-name">{idx.name}</span>
                 <span className="indexer-type">{idx.type}</span>
                 <span className="indexer-url">{idx.url}</span>
-                <button className="del-btn" onClick={() => deleteIndexer(idx.id)}><Trash2 size={14} /></button>
+                <button className="del-btn" onClick={() => deleteIndexers(idx.id)}><Trash2 size={14} /></button>
               </div>
             ))}
           </div>
 
-          {showAddIndexer ? (
+          {showAddIndexers ? (
             <div className="add-indexer-form">
-              <div className="add-indexer-title">Neuer Indexer</div>
+              <div className="add-indexer-title">Neuer Indexers</div>
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Name</label>
-                  <input className="form-input" value={newIndexer.name} onChange={e => setNewIndexer(p => ({ ...p, name: e.target.value }))} placeholder="z.B. NZBgeek" />
+                  <input className="form-input" value={newIndexers.name} onChange={e => setNewIndexers(p => ({ ...p, name: e.target.value }))} placeholder="z.B. NZBgeek" />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Typ</label>
-                  <select className="form-input" value={newIndexer.type} onChange={e => setNewIndexer(p => ({ ...p, type: e.target.value }))}>
+                  <label className="form-label">Type</label>
+                  <select className="form-input" value={newIndexers.type} onChange={e => setNewIndexers(p => ({ ...p, type: e.target.value }))}>
                     <option value="torznab">Torznab</option>
                     <option value="newznab">Newznab</option>
                     <option value="torrent_api">Torrent API</option>
@@ -246,21 +246,21 @@ export default function SettingsPage() {
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">URL</label>
-                  <input className="form-input" value={newIndexer.url} onChange={e => setNewIndexer(p => ({ ...p, url: e.target.value }))} placeholder="https://..." />
+                  <input className="form-input" value={newIndexers.url} onChange={e => setNewIndexers(p => ({ ...p, url: e.target.value }))} placeholder="https://..." />
                 </div>
                 <div className="form-group">
                   <label className="form-label">API Key</label>
-                  <input className="form-input" value={newIndexer.api_key} onChange={e => setNewIndexer(p => ({ ...p, api_key: e.target.value }))} placeholder="Optional" />
+                  <input className="form-input" value={newIndexers.api_key} onChange={e => setNewIndexers(p => ({ ...p, api_key: e.target.value }))} placeholder="Optional" />
                 </div>
               </div>
               <div className="btn-row">
-                <button className="btn-save" onClick={addIndexer}><Plus size={14} /> Hinzufügen</button>
-                <button className="btn-test" onClick={() => setShowAddIndexer(false)}>Abbrechen</button>
+                <button className="btn-save" onClick={addIndexers}><Plus size={14} /> Add</button>
+                <button className="btn-test" onClick={() => setShowAddIndexers(false)}>Abbrechen</button>
               </div>
             </div>
           ) : (
-            <button className="btn-test" onClick={() => setShowAddIndexer(true)}>
-              <Plus size={14} /> Indexer hinzufügen
+            <button className="btn-test" onClick={() => setShowAddIndexers(true)}>
+              <Plus size={14} /> Add Indexers
             </button>
           )}
         </div>
