@@ -1,233 +1,220 @@
 # 🎬 Streamline
 
-**Streamline** ist ein selbstgehosteter Media-Manager als Alternative zu Sonarr + Radarr — beide Funktionen in einer einzigen, modernen Oberfläche vereint.
+**Streamline** is a self-hosted media manager — a modern, all-in-one alternative to Sonarr + Radarr, built from scratch with a clean dark UI.
 
-![Streamline Dashboard](https://img.shields.io/badge/version-1.0.0-6366f1?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.0.0-6366f1?style=flat-square)
 ![Docker](https://img.shields.io/badge/docker-ready-2496ED?style=flat-square&logo=docker)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
-
-
-## Screenshots
-
-> 📸 **Screenshots werden nach dem ersten Start hinzugefügt.**
-> Starte Streamline, mach Screenshots der folgenden Ansichten und lege sie in `docs/screenshots/` ab:
-
-| Dashboard | Mediathek |
-|---|---|
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Bibliothek](docs/screenshots/library.png) |
-
-| Suche | Einstellungen |
-|---|---|
-| ![Suche](docs/screenshots/search.png) | ![Einstellungen](docs/screenshots/settings.png) |
 
 ---
 
 ## Features
 
-- **Filme & Serien** in einer Oberfläche verwalten (Sonarr + Radarr Ersatz)
-- **TMDB-Integration** — Metadaten, Poster, Bewertungen automatisch abrufen
-- **SABnzbd** — Live-Queue, Pause/Resume/Delete, NZB direkt senden
-- **NZBHydra2** — Newznab-Indexer-Suche integriert
-- **Torrent-Indexer** — Torznab/Newznab Indexer per API Key & URL einbinden
-- **Qualitätsprofile** — 720p / 1080p / 2160p / Any
-- **Serien-Episodenverwaltung** — Staffeln und Episoden mit Status-Tracking
-- **Ersteinrichtung-Wizard** — Admin-Account beim ersten Start
-- **JWT-Authentifizierung** mit sicherer Token-Verwaltung
-- **Vollständig Dockerisiert** — startet mit einem Befehl
+- 🎬 **Movies & TV Shows** in one interface — replaces Sonarr + Radarr
+- 🔍 **TMDB & TheTVDB** — metadata, posters and ratings (user-configurable)
+- 📥 **SABnzbd** — live queue, pause/resume/delete, send NZBs directly
+- 🔎 **NZBHydra2 / Newznab** — integrated indexer search
+- 🌐 **Custom Indexers** — add any Newznab/Torznab indexer by URL and API key
+- ⭐ **Custom Formats** — import scoring rules directly from Radarr/Sonarr JSON export
+- 📊 **Interactive NZB Search** — Radarr-style sortable table with quality, language and score columns
+- 📦 **Bulk Import** — import your existing media collection from a text list
+- 🤖 **Telegram Bot** — search, add and monitor media from Telegram
+- 💬 **Discord Webhooks** — notifications for downloads, new media and daily digest
+- 👤 **User Management** — create users and change passwords from the UI
+- 🧙 **Onboarding Wizard** — guided first-run setup with a 5-minute time window
+- 🔐 **JWT Authentication** with secure token handling
+- 🐳 **Fully Dockerized** — starts with a single command
 
 ---
 
-## Sicherheit
+## Quick Start
 
-Streamline wurde mit Security-First-Ansatz entwickelt:
-
-| Maßnahme | Details |
-|---|---|
-| **Passwort-Hashing** | bcrypt mit 12 Salt-Rounds |
-| **JWT-Tokens** | HS256, 24h Ablauf, Issuer-Validierung |
-| **Rate Limiting** | 200 req/15min allgemein, 10 req/15min für Login |
-| **Helmet.js** | Sicherheits-HTTP-Header (CSP, HSTS, etc.) |
-| **Input-Validierung** | express-validator auf allen Endpunkten |
-| **SQL-Injection-Schutz** | Prepared Statements (better-sqlite3) |
-| **CORS-Whitelist** | Nur explizit erlaubte Origins |
-| **Non-root Container** | Backend und Frontend laufen ohne Root |
-| **API Keys verschlüsselt** | Werden nie im Klartext zurückgegeben |
-| **Audit-Log** | Alle kritischen Aktionen werden protokolliert |
-| **Timing-Attack-Schutz** | Immer bcrypt.compare(), auch bei ungültigem User |
-
----
-
-## Schnellstart
-
-### Voraussetzungen
+### Requirements
 
 - Docker >= 24.0
 - Docker Compose >= 2.0
 
-### 1. Repository klonen
+### 1. Clone the repository
 
 ```bash
-git clone https://github.com/dein-user/streamline.git
+git clone https://github.com/your-user/streamline.git
 cd streamline
 ```
 
-### 2. Umgebungsvariablen setzen
+### 2. Configure environment variables
 
 ```bash
 cp .env.example .env
 ```
 
-Öffne `.env` und setze mindestens den `JWT_SECRET`:
+Open `.env` and set at least `JWT_SECRET` and `BOT_SECRET`:
 
 ```bash
-# JWT_SECRET generieren:
-openssl rand -hex 32
+openssl rand -hex 32   # for JWT_SECRET
+openssl rand -hex 16   # for BOT_SECRET
 ```
 
 ```env
-JWT_SECRET=dein_generierter_geheimer_schlüssel_hier
+JWT_SECRET=your_generated_secret_here
+BOT_SECRET=your_generated_secret_here
 HOST_PORT=7878
+ALLOWED_ORIGINS=http://localhost:7878
 ```
 
-### 3. Starten
+### 3. Start
 
 ```bash
 docker compose up -d --build
 ```
 
-Streamline ist dann erreichbar unter: **http://localhost:7878**
+Streamline is now available at: **http://localhost:7878**
 
-### 4. Ersteinrichtung
+### 4. First launch — Onboarding Wizard
 
-Beim ersten Aufruf wirst du automatisch zum Setup-Wizard weitergeleitet, wo du deinen Administrator-Account erstellst.
+On first visit, Streamline shows a guided setup wizard where you create your admin account and optionally connect SABnzbd, TMDB/TheTVDB and your first indexer. The wizard is available for **5 minutes** — after that it expires and you land on the normal login page.
 
 ---
 
-## Konfiguration
+## Environment Variables
 
-### Umgebungsvariablen (`.env`)
-
-| Variable | Standard | Beschreibung |
+| Variable | Default | Description |
 |---|---|---|
-| `JWT_SECRET` | — | **Pflicht.** Mindestens 32 Zeichen. Mit `openssl rand -hex 32` generieren |
-| `HOST_PORT` | `7878` | Port auf dem Host |
-| `ALLOWED_ORIGINS` | `http://localhost:7878` | Erlaubte CORS-Origins (kommagetrennt) |
-| `LOG_LEVEL` | `info` | Logging-Level: error / warn / info / debug |
+| `JWT_SECRET` | — | **Required.** Min. 32 chars. Generate with `openssl rand -hex 32` |
+| `BOT_SECRET` | — | Shared secret between backend and bot. Generate with `openssl rand -hex 16` |
+| `HOST_PORT` | `7878` | Port exposed on the host |
+| `ALLOWED_ORIGINS` | `http://localhost:7878` | Comma-separated list of allowed CORS origins |
+| `TELEGRAM_TOKEN` | — | Telegram bot token from @BotFather |
+| `TELEGRAM_CHAT_ID` | — | Restrict bot to one chat ID (leave empty for no restriction) |
+| `STREAMLINE_BOT_USER` | `bot` | Username of the Streamline bot account |
+| `STREAMLINE_BOT_PASS` | — | Password of the Streamline bot account |
+| `DISCORD_WEBHOOK_URL` | — | Discord webhook URL for notifications |
+| `LOG_LEVEL` | `info` | Logging level: error / warn / info / debug |
 
-### Integrationen einrichten
+---
 
-Nach dem Login unter **Einstellungen**:
+## Settings
 
-#### TMDB API Key
-1. Konto auf [themoviedb.org](https://www.themoviedb.org) erstellen
-2. Unter *Einstellungen → API* einen v3 API Key beantragen
-3. Key in Streamline unter *Einstellungen → TMDB API* eintragen
+After login, configure everything under the **Settings** menu:
 
-#### SABnzbd
-- URL: `http://192.168.1.x:8080` (oder deine SABnzbd-Adresse)
-- API Key: In SABnzbd unter *Konfiguration → Allgemein → API-Schlüssel*
+### Metadata Provider
+Choose between **TMDB** (movies + TV) and **TheTVDB** (best for TV shows). Enter the API key and test the connection.
 
-#### NZBHydra2
+- **TMDB API Key (v3):** [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api) — free
+- **TheTVDB API Key (v4):** [thetvdb.com/api-information](https://www.thetvdb.com/api-information) — free
+
+### SABnzbd
+- URL: `http://192.168.1.x:8080`
+- API Key: SABnzbd → Configuration → General → API Key
+
+### NZBHydra2
 - URL: `http://192.168.1.x:5076`
-- API Key: In NZBHydra2 unter *Config → Authorization*
+- API Key: NZBHydra2 → Config → Authorization
 
-#### Torrent-Indexer (Torznab/Newznab)
-- Beliebig viele Indexer mit Name, Typ, URL und API Key hinzufügbar
-- Kompatibel mit Jackett, Prowlarr, NZBHydra2-Torznab-Proxies
+### Indexers
+Add any Newznab/Torznab indexer by name, type, URL and API key. Compatible with Prowlarr, Jackett and NZBHydra2.
+
+### Custom Formats
+Import scoring rules from Radarr or Sonarr:
+1. In Radarr/Sonarr: **Settings → Custom Formats → Export**
+2. Paste the JSON in Streamline → **Custom Formats → Import**
+3. Scores are applied automatically to all NZB search results
 
 ---
 
-## Docker Compose (Produktiv)
+## User Management
 
-```yaml
-# Angepasstes Beispiel für Heimnetz mit Traefik/Reverse Proxy
-services:
-  streamline-backend:
-    image: streamline-backend
-    environment:
-      - JWT_SECRET=${JWT_SECRET}
-      - ALLOWED_ORIGINS=https://media.deinedomain.de
+Go to **Users** in the sidebar to create users, change passwords and manage roles.
 
-  streamline-frontend:
-    image: streamline-frontend
-    ports:
-      - "7878:80"
+### Creating the bot user via CLI
+
+```bash
+docker exec -it streamline-backend node -e "
+const bcrypt = require('bcryptjs');
+const Database = require('better-sqlite3');
+bcrypt.hash('your_bot_password', 12).then(hash => {
+  const db = new Database('/app/data/streamline.db');
+  db.prepare('INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(
+    require('crypto').randomUUID(), 'bot', hash, 'user'
+  );
+  console.log('Bot user created!');
+  process.exit(0);
+});
+"
+```
+
+### Reset a forgotten password
+
+```bash
+docker exec -it streamline-backend node -e "
+const bcrypt = require('bcryptjs');
+const Database = require('better-sqlite3');
+bcrypt.hash('NewPassword123', 12).then(hash => {
+  const db = new Database('/app/data/streamline.db');
+  db.prepare('UPDATE users SET password_hash = ? WHERE username = ?').run(hash, 'admin');
+  console.log('Password updated!');
+  process.exit(0);
+});
+"
 ```
 
 ---
----
 
-## 🤖 Telegram Bot & Discord Webhook
+## Telegram Bot & Discord
 
-Streamline kommt mit einem nativen Bot-Container — kein externes Tool nötig.
+Streamline includes a native bot container — no external tools needed.
 
-### Telegram Bot einrichten
+### Telegram Bot Setup
 
-**1. Bot bei @BotFather erstellen:**
+**1. Create a bot via @BotFather:**
 ```
-/newbot
-→ Name: Streamline
-→ Username: mein_streamline_bot
-→ Token: 123456:ABC-DEF... ← in .env eintragen
+/newbot → Name: Streamline → get token
 ```
 
-**2. Chat-ID herausfinden:**
-Schreibe deinem Bot eine Nachricht, dann:
+**2. Find your Chat ID:**
 ```bash
 curl https://api.telegram.org/bot<TOKEN>/getUpdates
-# "chat":{"id": 123456789}  ← das ist deine TELEGRAM_CHAT_ID
+# look for "chat":{"id": 123456789}
 ```
 
-**3. Bot-User in Streamline anlegen** *(nach dem ersten Start)*:
-Logge dich ein → Einstellungen → Benutzer → neuen User `bot` anlegen, Passwort in `.env` als `STREAMLINE_BOT_PASS` eintragen.
-
-**4. In `.env` eintragen und neu starten:**
+**3. Add to `.env` and restart:**
 ```env
 TELEGRAM_TOKEN=123456:ABC-DEF...
 TELEGRAM_CHAT_ID=123456789
 STREAMLINE_BOT_USER=bot
-STREAMLINE_BOT_PASS=dein_bot_passwort
-BOT_SECRET=<openssl rand -hex 16>
+STREAMLINE_BOT_PASS=your_bot_password
 ```
 
-### Bot-Befehle
+### Bot Commands
 
-| Befehl | Funktion |
+| Command | Description |
 |---|---|
-| `/start` | Hilfe & Befehlsübersicht |
-| `/status` | Systemübersicht (Filme, Serien, Downloads) |
-| `/library` | Gesamte Mediathek |
-| `/movies` | Nur Filme |
-| `/series` | Nur Serien |
-| `/wanted` | Gewünschte Medien |
-| `/search <Titel>` | TMDB durchsuchen + inline hinzufügen |
-| `/add_movie <TMDB-ID>` | Film direkt per ID hinzufügen |
-| `/add_series <TMDB-ID>` | Serie direkt per ID hinzufügen |
-| `/queue` | SABnzbd Live-Queue |
-| `/history` | Download-Verlauf |
+| `/start` | Show help and all commands |
+| `/status` | System overview |
+| `/library` | Full media library |
+| `/movies` | Movies only |
+| `/series` | TV shows only |
+| `/wanted` | Wanted media |
+| `/search <title>` | Search and add inline via buttons |
+| `/add_movie <title or ID>` | Add a movie by title or TMDB ID |
+| `/add_series <title or ID>` | Add a TV show by title or TMDB ID |
+| `/queue` | SABnzbd live queue |
+| `/history` | Download history |
 
-### Discord Webhook einrichten
+### Discord Webhook
 
-**1. Webhook in Discord erstellen:**
 ```
-Server-Einstellungen → Integrationen → Webhooks → Neuer Webhook
-→ Kanal wählen → Webhook-URL kopieren
+Discord: Server Settings → Integrations → Webhooks → New Webhook → copy URL
 ```
 
-**2. In `.env` eintragen:**
 ```env
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 ```
 
-**Automatische Discord-Benachrichtigungen bei:**
-- ✅ Neues Medium zur Mediathek hinzugefügt
-- ✅ Download abgeschlossen
-- ❌ Download fehlgeschlagen
-- ☀️ Tägliche Zusammenfassung (08:00 Uhr)
+Automatic notifications for: new media added, download completed/failed, daily digest at 08:00.
 
 ---
 
-## Architektur
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -236,37 +223,53 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
                        │ HTTP :7878
 ┌──────────────────────▼──────────────────────┐
 │         Nginx (Frontend Container)          │
-│   React SPA + Reverse Proxy für /api/*      │
+│     React SPA + Reverse Proxy for /api/*    │
 └──────────┬──────────────────────────────────┘
            │ /api/* → http://backend:3001
 ┌──────────▼──────────────────────────────────┐
-│      Node.js / Express (Backend Container)  │
-│                                             │
+│    Node.js / Express (Backend Container)    │
 │  Auth │ Media │ Search │ Settings │ DLs     │
 └──────────┬──────────────────────────────────┘
            │
 ┌──────────▼──────────┐   ┌─────────────────┐
-│  SQLite (Persistent │   │ External APIs:  │
-│  Docker Volume)     │   │ TMDB, SABnzbd,  │
-└─────────────────────┘   │ NZBHydra2, ...  │
+│  SQLite (Persistent │   │  External APIs: │
+│  Docker Volume)     │   │  TMDB, TheTVDB, │
+└─────────────────────┘   │  SABnzbd, Hydra │
                           └─────────────────┘
+┌─────────────────────────────────────────────┐
+│         Bot Container (Node.js)             │
+│   Telegram polling + Discord webhooks       │
+└─────────────────────────────────────────────┘
 ```
 
 ---
 
-## Volumes & Datenspeicherung
+## Security
 
-| Volume | Inhalt |
+| Measure | Details |
 |---|---|
-| `streamline_data` | SQLite-Datenbank mit allen Mediendaten |
-| `streamline_logs` | Backend-Logs (rotiert, max. 50 MB) |
+| Password hashing | bcrypt with 12 salt rounds |
+| JWT tokens | HS256, 24h expiry, issuer validation |
+| Rate limiting | 200 req/15min general, 20 req/15min for login |
+| Helmet.js | Security HTTP headers (CSP, HSTS, etc.) |
+| Input validation | express-validator on all endpoints |
+| SQL injection protection | Prepared statements (better-sqlite3) |
+| CORS whitelist | Only origins listed in `ALLOWED_ORIGINS` |
+| Non-root container | Backend runs as unprivileged `streamline` user |
+| API keys masked | Never returned in plaintext after saving |
+| Timing-attack protection | Always runs bcrypt.compare(), even for invalid users |
 
-### Backup
+---
+
+## Backup & Restore
 
 ```bash
-# Datenbank sichern
-docker compose exec backend cp /app/data/streamline.db /app/data/streamline.db.backup
+# Backup
 docker cp streamline-backend:/app/data/streamline.db ./backup_$(date +%Y%m%d).db
+
+# Restore
+docker cp ./backup_20260101.db streamline-backend:/app/data/streamline.db
+docker restart streamline-backend
 ```
 
 ---
@@ -284,70 +287,54 @@ docker compose up -d --build
 ## Logs
 
 ```bash
-# Alle Container
-docker compose logs -f
-
-# Nur Backend
-docker compose logs -f backend
-
-# Nur Frontend/Nginx
-docker compose logs -f frontend
+docker compose logs -f          # all containers
+docker compose logs -f backend  # backend only
+docker compose logs -f frontend # nginx only
+docker compose logs -f bot      # bot only
 ```
 
 ---
 
-## Entwicklung (ohne Docker)
+## Troubleshooting
 
-```bash
-# Backend
-cd backend
-npm install
-cp .env.example .env  # JWT_SECRET setzen
-node server.js
-
-# Frontend (anderes Terminal)
-cd frontend
-npm install
-npm start
-```
-
-Frontend läuft auf `http://localhost:3000`, Backend auf `http://localhost:3001`.
-
----
-
-## Fehlerbehebung
-
-**Container startet nicht:**
+**Container won't start:**
 ```bash
 docker compose logs backend
-# Häufige Ursache: JWT_SECRET nicht gesetzt oder zu kurz (min. 32 Zeichen)
+# Common cause: JWT_SECRET not set or too short (min. 32 chars)
 ```
 
-**TMDB-Suche funktioniert nicht:**
-- API Key in den Einstellungen überprüfen
-- TMDB erlaubt nur v3 API Keys (nicht Bearer Tokens)
+**Login not working after update:**
+```
+Browser: Ctrl + Shift + R  (hard refresh, clears cached JS)
+```
 
-**SABnzbd nicht erreichbar:**
-- URL muss aus dem Docker-Netzwerk erreichbar sein
-- `localhost` des Hosts ist im Container **nicht** `localhost` — verwende die Host-IP oder Hostname
+**TMDB/TheTVDB search not working:**
+- Check the API key under Settings → Metadata Provider
+- TMDB requires v3 API keys (not Bearer tokens)
 
-**Port-Konflikt:**
-```bash
-# Port in .env ändern
+**SABnzbd unreachable:**
+- Use the host IP instead of `localhost` — e.g. `http://192.168.1.100:8080`
+
+**Port conflict:**
+```env
 HOST_PORT=8989
-docker compose up -d
 ```
 
----
-
-## Lizenz
-
-MIT License — siehe [LICENSE](LICENSE)
+**Bot not responding:**
+- Verify `STREAMLINE_BOT_USER` / `STREAMLINE_BOT_PASS` match the user in Streamline → Users
+- Run `docker compose logs bot` for details
 
 ---
 
-## Danke
+## License
 
-Inspiriert von [Sonarr](https://sonarr.tv) und [Radarr](https://radarr.video). Nutzt die [TMDB API](https://www.themoviedb.org/documentation/api).
+MIT License
 
-> ⚠️ **Hinweis:** Streamline ist ein Verwaltungstool. Das Herunterladen urheberrechtlich geschützter Inhalte ohne Erlaubnis ist illegal und liegt in der Verantwortung des Nutzers.
+---
+
+## Credits
+
+Inspired by [Sonarr](https://sonarr.tv) and [Radarr](https://radarr.video).
+Uses the [TMDB API](https://www.themoviedb.org/documentation/api) and [TheTVDB API](https://www.thetvdb.com/api-information).
+
+> ⚠️ **Disclaimer:** Streamline is a management tool only. Downloading copyrighted content without permission is illegal and the sole responsibility of the user.

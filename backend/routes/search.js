@@ -12,6 +12,135 @@ function getTmdbKey() {
   return row?.value || null;
 }
 
+
+// ── TheTVDB helpers ────────────────────────────────────────────────────────────
+function getTvdbKey() {
+  const db = getDB();
+  return db.prepare("SELECT value FROM settings WHERE key = 'tvdb_api_key'").get()?.value || null;
+}
+
+let tvdbTokenCache = null;
+let tvdbTokenExpiry = 0;
+
+async function getTvdbToken() {
+  if (tvdbTokenCache && Date.now() < tvdbTokenExpiry) return tvdbTokenCache;
+  const apiKey = getTvdbKey();
+  if (!apiKey) throw new Error('TheTVDB API key not configured');
+  const r = await axios.post('https://api4.thetvdb.com/v4/login', { apikey: apiKey }, { timeout: 8000 });
+  tvdbTokenCache = r.data.data.token;
+  tvdbTokenExpiry = Date.now() + 23 * 60 * 60 * 1000;
+  return tvdbTokenCache;
+}
+
+function getMetaProvider() {
+  const db = getDB();
+  return db.prepare("SELECT value FROM settings WHERE key = 'meta_provider'").get()?.value || 'tmdb';
+}
+
+// GET /api/search/tvdb?q=...&type=series|movie|both
+router.get('/tvdb',
+  query('q').trim().isLength({ min: 1, max: 200 }),
+  query('type').optional().isIn(['movie', 'series', 'both']),
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const { q, type = 'both' } = req.query;
+    try {
+      const token = await getTvdbToken();
+      const headers = { Authorization: 'Bearer ' + token };
+      const results = [];
+
+      if (type === 'series' || type === 'both') {
+        const r = await axios.get('https://api4.thetvdb.com/v4/search', {
+          params: { query: q, type: 'series', limit: 20 },
+          headers, timeout: 8000,
+        });
+        (r.data.data || []).forEach(s => {
+          results.push({
+            tvdb_id: s.tvdb_id || s.id,
+            tmdb_id: s.tmdb_id || null,
+            type: 'series',
+            title: s.name,
+            year: s.year || s.first_air_time?.slice(0, 4) || null,
+            overview: s.overviews?.eng || s.overview || '',
+            poster_url: s.image_url || s.thumbnail || null,
+            backdrop_url: null,
+            rating: s.score ? parseFloat(s.score) : null,
+            source: 'tvdb',
+          });
+        });
+      }
+
+      if (type === 'movie' || type === 'both') {
+        const r = await axios.get('https://api4.thetvdb.com/v4/search', {
+          params: { query: q, type: 'movie', limit: 20 },
+          headers, timeout: 8000,
+        });
+        (r.data.data || []).forEach(m => {
+          results.push({
+            tvdb_id: m.tvdb_id || m.id,
+            tmdb_id: m.tmdb_id || null,
+            type: 'movie',
+            title: m.name,
+            year: m.year || null,
+            overview: m.overviews?.eng || m.overview || '',
+            poster_url: m.image_url || m.thumbnail || null,
+            backdrop_url: null,
+            rating: m.score ? parseFloat(m.score) : null,
+            source: 'tvdb',
+          });
+        });
+      }
+
+      res.json({ results: results.slice(0, 40) });
+    } catch (err) {
+      logger.error('TheTVDB search failed', { error: err.message });
+      res.status(500).json({ error: 'TheTVDB search failed: ' + err.message });
+    }
+  }
+);
+
+// GET /api/search/tvdb/details/:type/:id
+router.get('/tvdb/details/:type/:id', async (req, res) => {
+  const { type, id } = req.params;
+  try {
+    const token = await getTvdbToken();
+    const headers = { Authorization: 'Bearer ' + token };
+    const endpoint = type === 'series' ? 'series' : 'movies';
+    const r = await axios.get('https://api4.thetvdb.com/v4/' + endpoint + '/' + id + '/extended', {
+      params: { meta: 'translations' },
+      headers, timeout: 8000,
+    });
+    const d = r.data.data;
+    res.json({
+      tvdb_id: d.id,
+      tmdb_id: d.remoteIds?.find(x => x.sourceName === 'TheMovieDB.com')?.id || null,
+      type,
+      title: d.name,
+      year: d.firstAired?.slice(0, 4) || null,
+      overview: d.translations?.overviewTranslations?.find(t => t.language === 'eng')?.overview || d.overview || '',
+      poster_url: d.image || null,
+      rating: d.score || null,
+      seasons: (d.seasons || []).map(s => ({ season_number: s.number, episode_count: s.episodeCount || 0 })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'TheTVDB details failed: ' + err.message });
+  }
+});
+
+// GET /api/search/meta?q=... — unified search using configured provider
+router.get('/meta',
+  query('q').trim().isLength({ min: 1, max: 200 }),
+  query('type').optional().isIn(['movie', 'series', 'both']),
+  async (req, res) => {
+    const provider = getMetaProvider();
+    // Proxy to the right provider
+    req.url = (provider === 'tvdb' ? '/tvdb' : '/tmdb') + '?q=' + encodeURIComponent(req.query.q) + '&type=' + (req.query.type || 'both');
+    router.handle(req, res, () => {});
+  }
+);
+
 // GET /api/search/tmdb?q=...&type=movie|series
 router.get('/tmdb',
   query('q').trim().isLength({ min: 1, max: 200 }),

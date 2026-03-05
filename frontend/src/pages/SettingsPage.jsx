@@ -11,27 +11,33 @@ const styles = `
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   .form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
   .form-label { font-size: 12px; font-weight: 500; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; }
-  .form-input { width: 100%; padding: 10px 14px; background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 8px; color: #e8e8f0; font-size: 14px; font-family: 'DM Sans', sans-serif; outline: none; transition: border-color 0.15s; }
+  .form-input { width: 100%; padding: 10px 14px; background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 8px; color: #e8e8f0; font-size: 14px; font-family: 'DM Sans', sans-serif; outline: none; transition: border-color 0.15s; box-sizing: border-box; }
   .form-input:focus { border-color: #6366f1; }
   .input-wrap { position: relative; }
   .pw-toggle { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #6b7280; cursor: pointer; }
-  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
   .btn-save { padding: 10px 20px; background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; border-radius: 8px; color: white; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; display: flex; align-items: center; gap: 6px; font-size: 14px; }
+  .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
   .btn-test { padding: 10px 20px; background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 8px; color: #6b7280; font-weight: 500; cursor: pointer; font-family: 'DM Sans', sans-serif; display: flex; align-items: center; gap: 6px; font-size: 14px; }
   .btn-test:hover { color: #e8e8f0; }
-  .test-result { display: flex; align-items: center; gap: 6px; font-size: 13px; padding: 8px 12px; border-radius: 6px; }
+  .test-result { display: flex; align-items: center; gap: 6px; font-size: 13px; padding: 8px 12px; border-radius: 6px; margin-top: 10px; }
   .test-ok { background: rgba(34,197,94,0.1); color: #16a34a; }
   .test-fail { background: rgba(239,68,68,0.1); color: #dc2626; }
   .indexer-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
   .indexer-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: #1a1a2e; border-radius: 8px; }
   .indexer-name { flex: 1; font-size: 14px; color: #e8e8f0; }
   .indexer-type { font-size: 12px; color: #6b7280; padding: 2px 8px; background: #0f0f1a; border-radius: 4px; }
-  .indexer-url { font-size: 12px; color: #4b5563; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .indexer-url { font-size: 12px; color: #4b5563; flex: 2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .del-btn { background: none; border: none; color: #6b7280; cursor: pointer; }
   .del-btn:hover { color: #ef4444; }
   .add-indexer-form { border: 1px dashed #2a2a4e; border-radius: 8px; padding: 16px; margin-top: 8px; }
-  .add-indexer-title { font-size: 13px; font-weight: 600; color: #9ca3af; margin-bottom: 12px; }
-  @media (max-width: 640px) { .form-row { grid-template-columns: 1fr; } }
+  .provider-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+  .provider-card { padding: 14px 16px; background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 10px; cursor: pointer; transition: all 0.15s; }
+  .provider-card.active { background: rgba(99,102,241,0.1); border-color: #6366f1; }
+  .provider-card-label { font-size: 14px; font-weight: 600; color: #e8e8f0; margin-bottom: 2px; }
+  .provider-card.active .provider-card-label { color: #6366f1; }
+  .provider-card-sub { font-size: 12px; color: #6b7280; }
+  @media (max-width: 640px) { .form-row { grid-template-columns: 1fr; } .provider-toggle { grid-template-columns: 1fr; } }
 `;
 
 function ApiKeyInput({ value, onChange, placeholder }) {
@@ -43,138 +49,132 @@ function ApiKeyInput({ value, onChange, placeholder }) {
       <button type="button" className="pw-toggle" onClick={() => setShow(v => !v)}>
         {show ? <EyeOff size={15} /> : <Eye size={15} />}
       </button>
-
-
-
-      {/* User Management */}
-      <div className="settings-card">
-        <div className="card-title">👤 Users</div>
-        <UsersPanel />
-      </div>
     </div>
   );
 }
 
-
-// CustomFormatsPanel moved to CustomFormatsPage
-function _CustomFormatsPanel() {
-  const [formats, setFormats] = useState([]);
-  const [importText, setImportText] = useState('');
-  const [importing, setImporting] = useState(false);
-  const [source, setSource] = useState('radarr');
+function MetaProviderPanel() {
+  const [provider, setProvider] = useState('tmdb');
+  const [tmdbKey, setTmdbKey] = useState('');
+  const [tvdbKey, setTvdbKey] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null);
 
   useEffect(() => {
-    api.get('/settings/custom-formats').then(r => setFormats(r.data.formats || [])).catch(() => {});
+    api.get('/settings/meta-provider').then(r => {
+      setProvider(r.data.provider || 'tmdb');
+      setTmdbKey(r.data.tmdb_api_key || '');
+      setTvdbKey(r.data.tvdb_api_key || '');
+    }).catch(() => {});
   }, []);
 
-  const doImport = async () => {
-    if (!importText.trim()) { toast.error('Paste JSON first'); return; }
-    setImporting(true);
+  const save = async () => {
+    setSaving(true);
+    setTestResult(null);
     try {
-      let data = JSON.parse(importText);
-      if (!Array.isArray(data)) data = [data];
-      const res = await api.post('/settings/import-custom-formats', { source, data });
-      toast.success(`Imported ${res.data.imported} format(s)`);
-      setImportText('');
-      const updated = await api.get('/settings/custom-formats');
-      setFormats(updated.data.formats || []);
-    } catch (err) {
-      toast.error(err.message?.includes('JSON') ? 'Invalid JSON' : (err.response?.data?.error || 'Import failed'));
-    } finally { setImporting(false); }
+      await api.post('/settings/meta-provider', { provider, tmdb_api_key: tmdbKey, tvdb_api_key: tvdbKey });
+      toast.success('Metadata provider saved');
+    } catch { toast.error('Failed to save'); }
+    finally { setSaving(false); }
   };
 
-  const deleteFormat = async (name) => {
-    const updated = formats.filter(f => f.name !== name);
-    await api.post('/settings/custom-formats', { formats: updated });
-    setFormats(updated);
-    toast.success('Format removed');
+  const test = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const endpoint = provider === 'tvdb'
+        ? '/search/tvdb?q=Breaking+Bad&type=series'
+        : '/search/tmdb?q=Breaking+Bad&type=series';
+      const r = await api.get(endpoint);
+      const count = r.data.results?.length || 0;
+      setTestResult({ ok: true, msg: 'Connected — ' + count + ' results for "Breaking Bad"' });
+    } catch (err) {
+      setTestResult({ ok: false, msg: err.response?.data?.error || 'Connection failed' });
+    } finally { setTesting(false); }
   };
 
   return (
     <div>
-      {formats.length > 0 && (
-        <div style={{marginBottom:'20px'}}>
-          <div style={{fontSize:'13px',fontWeight:'600',color:'#9ca3af',marginBottom:'10px'}}>Active Formats ({formats.length})</div>
-          <div style={{display:'flex',flexDirection:'column',gap:'6px'}}>
-            {formats.map(f => (
-              <div key={f.name} style={{display:'flex',alignItems:'center',gap:'10px',padding:'8px 12px',background:'#1a1a2e',borderRadius:'8px'}}>
-                <span style={{flex:1,fontSize:'13px',color:'#e8e8f0'}}>{f.name}</span>
-                <span style={{fontSize:'12px',padding:'2px 8px',borderRadius:'4px',background: f.score >= 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',color: f.score >= 0 ? '#10b981' : '#ef4444',fontFamily:'Space Mono,monospace'}}>
-                  {f.score > 0 ? '+' : ''}{f.score ?? 0}
-                </span>
-                <span style={{fontSize:'11px',color:'#4b5563'}}>{(f.conditions||[]).length} condition{(f.conditions||[]).length !== 1 ? 's' : ''}</span>
-                <button onClick={() => deleteFormat(f.name)} style={{background:'none',border:'none',color:'#6b7280',cursor:'pointer',padding:'2px'}} title="Remove">✕</button>
-              </div>
-            ))}
+      <p style={{fontSize:'13px',color:'#6b7280',marginBottom:'20px',lineHeight:'1.5'}}>
+        Choose which metadata provider to use for searching and adding movies and TV shows.
+      </p>
+      <div className="provider-toggle">
+        <div className={'provider-card ' + (provider === 'tmdb' ? 'active' : '')} onClick={() => setProvider('tmdb')}>
+          <div className="provider-card-label">TMDB</div>
+          <div className="provider-card-sub">The Movie Database</div>
+        </div>
+        <div className={'provider-card ' + (provider === 'tvdb' ? 'active' : '')} onClick={() => setProvider('tvdb')}>
+          <div className="provider-card-label">TheTVDB</div>
+          <div className="provider-card-sub">Best for TV shows</div>
+        </div>
+      </div>
+      {provider === 'tmdb' && (
+        <div className="form-group">
+          <label className="form-label">TMDB API Key (v3)</label>
+          <ApiKeyInput value={tmdbKey} onChange={e => setTmdbKey(e.target.value)} placeholder="Get yours at themoviedb.org/settings/api" />
+          <div style={{fontSize:'12px',color:'#4b5563',marginTop:'4px'}}>
+            Free key at <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noreferrer" style={{color:'#6366f1'}}>themoviedb.org/settings/api</a>
           </div>
         </div>
       )}
-      <div style={{fontSize:'13px',fontWeight:'600',color:'#9ca3af',marginBottom:'8px'}}>Import from Radarr / Sonarr</div>
-      <div style={{display:'flex',gap:'8px',marginBottom:'10px'}}>
-        {['radarr','sonarr'].map(s => (
-          <button key={s} type="button"
-            style={{padding:'6px 14px',border:'1px solid',borderColor: source===s ? '#6366f1' : '#2a2a4e',borderRadius:'6px',background: source===s ? 'rgba(99,102,241,0.1)' : '#1a1a2e',color: source===s ? '#6366f1' : '#6b7280',cursor:'pointer',fontSize:'12px',fontFamily:'DM Sans,sans-serif',fontWeight:'500',textTransform:'capitalize'}}
-            onClick={() => setSource(s)}>{s}
-          </button>
-        ))}
-      </div>
-      <div style={{fontSize:'12px',color:'#4b5563',marginBottom:'8px'}}>
-        In {source === 'radarr' ? 'Radarr' : 'Sonarr'}: Settings → Custom Formats → Export → paste here
-      </div>
-      <textarea
-        className="form-input"
-        style={{minHeight:'120px',resize:'vertical',fontFamily:'Space Mono,monospace',fontSize:'12px'}}
-        value={importText}
-        onChange={e => setImportText(e.target.value)}
-        placeholder={'[\n  { "name": "Remux", "score": 300, ... }\n]'}
-      />
-      <div style={{marginTop:'10px'}}>
-        <button className="btn-save" type="button" onClick={doImport} disabled={importing}>
-          {importing ? 'Importing...' : `Import ${source === 'radarr' ? 'Radarr' : 'Sonarr'} Formats`}
-        </button>
+      {provider === 'tvdb' && (
+        <div className="form-group">
+          <label className="form-label">TheTVDB API Key (v4)</label>
+          <ApiKeyInput value={tvdbKey} onChange={e => setTvdbKey(e.target.value)} placeholder="Get yours at thetvdb.com/api-information" />
+          <div style={{fontSize:'12px',color:'#4b5563',marginTop:'4px'}}>
+            Free key at <a href="https://www.thetvdb.com/api-information" target="_blank" rel="noreferrer" style={{color:'#6366f1'}}>thetvdb.com/api-information</a>
+          </div>
+        </div>
+      )}
+      {testResult && (
+        <div className={'test-result ' + (testResult.ok ? 'test-ok' : 'test-fail')}>
+          {testResult.ok ? <CheckCircle size={14} /> : <XCircle size={14} />} {testResult.msg}
+        </div>
+      )}
+      <div className="btn-row" style={{marginTop:'14px'}}>
+        <button className="btn-save" onClick={save} disabled={saving}><Save size={14} /> {saving ? 'Saving...' : 'Save'}</button>
+        <button className="btn-test" onClick={test} disabled={testing}><TestTube size={14} /> {testing ? 'Testing...' : 'Test Connection'}</button>
       </div>
     </div>
   );
 }
 
-
 export default function SettingsPage() {
-  const [tmdbKey, setTmdbKey] = useState('');
   const [sabUrl, setSabUrl] = useState('');
   const [sabKey, setSabKey] = useState('');
   const [hydraUrl, setHydraUrl] = useState('');
   const [hydraKey, setHydraKey] = useState('');
   const [moviesPath, setMoviesPath] = useState('/downloads/movies');
   const [seriesPath, setSeriesPath] = useState('/downloads/series');
-  const [indexers, setIndexerss] = useState([]);
+  const [indexers, setIndexers] = useState([]);
   const [sabTest, setSabTest] = useState(null);
   const [hydraTest, setHydraTest] = useState(null);
-  const [showAddIndexers, setShowAddIndexers] = useState(false);
-  const [newIndexers, setNewIndexers] = useState({ name: '', type: 'torznab', url: '', api_key: '' });
+  const [showAddIndexer, setShowAddIndexer] = useState(false);
+  const [newIndexer, setNewIndexer] = useState({ name: '', type: 'newznab', url: '', api_key: '' });
 
   useEffect(() => {
     api.get('/settings').then(r => {
       const s = r.data;
-      if (s.tmdb_api_key && s.tmdb_api_key !== '***CONFIGURED***') setTmdbKey(s.tmdb_api_key);
       if (s.sabnzbd_url) setSabUrl(s.sabnzbd_url);
       if (s.hydra2_url) setHydraUrl(s.hydra2_url);
       if (s.download_path_movies) setMoviesPath(s.download_path_movies);
       if (s.download_path_series) setSeriesPath(s.download_path_series);
     }).catch(() => {});
-    api.get('/settings/indexers').then(r => setIndexerss(r.data)).catch(() => {});
+    api.get('/settings/indexers').then(r => setIndexers(r.data)).catch(() => {});
   }, []);
 
   const saveSetting = async (key, value) => {
     try {
       await api.put('/settings', { key, value });
       toast.success('Saved');
-    } catch { toast.error('Save fehlgeschlagen'); }
+    } catch { toast.error('Save failed'); }
   };
 
   const testConnection = async (type) => {
     const url = type === 'sabnzbd' ? sabUrl : hydraUrl;
     const key = type === 'sabnzbd' ? sabKey : hydraKey;
-    if (!url || !key) { toast.error('URL und API Key erforderlich'); return; }
+    if (!url || !key) { toast.error('URL and API Key required'); return; }
     try {
       const res = await api.post('/settings/test-connection', { type: type === 'hydra' ? 'hydra2' : type, url, api_key: key });
       const setter = type === 'sabnzbd' ? setSabTest : setHydraTest;
@@ -185,24 +185,24 @@ export default function SettingsPage() {
     }
   };
 
-  const addIndexers = async () => {
-    if (!newIndexers.name || !newIndexers.url) { toast.error('Name und URL erforderlich'); return; }
+  const addIndexer = async () => {
+    if (!newIndexer.name || !newIndexer.url) { toast.error('Name and URL required'); return; }
     try {
-      await api.post('/settings/indexers', newIndexers);
+      await api.post('/settings/indexers', newIndexer);
       const res = await api.get('/settings/indexers');
-      setIndexerss(res.data);
-      setShowAddIndexers(false);
-      setNewIndexers({ name: '', type: 'torznab', url: '', api_key: '' });
-      toast.success('Indexers hinzugefügt');
-    } catch { toast.error('Add fehlgeschlagen'); }
+      setIndexers(res.data);
+      setShowAddIndexer(false);
+      setNewIndexer({ name: '', type: 'newznab', url: '', api_key: '' });
+      toast.success('Indexer added');
+    } catch { toast.error('Failed to add indexer'); }
   };
 
-  const deleteIndexers = async (id) => {
+  const deleteIndexer = async (id) => {
     try {
-      await api.delete(`/settings/indexers/${id}`);
-      setIndexerss(prev => prev.filter(i => i.id !== id));
-      toast.success('Indexers entfernt');
-    } catch { toast.error('Fehler'); }
+      await api.delete('/settings/indexers/' + id);
+      setIndexers(prev => prev.filter(i => i.id !== id));
+      toast.success('Indexer removed');
+    } catch { toast.error('Error'); }
   };
 
   return (
@@ -211,21 +211,10 @@ export default function SettingsPage() {
       <div className="settings-title">Settings</div>
       <div className="settings-sections">
 
-        {/* TMDB */}
+        {/* Metadata Provider */}
         <div className="settings-card">
-          <div className="card-title">🎬 TMDB API</div>
-          <div className="form-group">
-            <label className="form-label">API Key</label>
-            <ApiKeyInput value={tmdbKey} onChange={e => setTmdbKey(e.target.value)} placeholder="Dein TMDB v3 API Key" />
-          </div>
-          <div className="btn-row">
-            <button className="btn-save" onClick={() => saveSetting('tmdb_api_key', tmdbKey)}>
-              <Save size={14} /> Save
-            </button>
-            <span style={{ fontSize: '12px', color: '#4b5563', alignSelf: 'center' }}>
-              API Key auf <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer" style={{ color: '#6366f1' }}>themoviedb.org</a> erstellen
-            </span>
-          </div>
+          <div className="card-title">🔍 Metadata Provider</div>
+          <MetaProviderPanel />
         </div>
 
         {/* SABnzbd */}
@@ -242,11 +231,11 @@ export default function SettingsPage() {
             </div>
           </div>
           {sabTest && (
-            <div className={`test-result ${sabTest.ok ? 'test-ok' : 'test-fail'}`}>
+            <div className={'test-result ' + (sabTest.ok ? 'test-ok' : 'test-fail')}>
               {sabTest.ok ? <CheckCircle size={14} /> : <XCircle size={14} />} {sabTest.msg}
             </div>
           )}
-          <div className="btn-row" style={{ marginTop: '12px' }}>
+          <div className="btn-row" style={{marginTop:'12px'}}>
             <button className="btn-save" onClick={async () => { await saveSetting('sabnzbd_url', sabUrl); await saveSetting('sabnzbd_api_key', sabKey); }}>
               <Save size={14} /> Save
             </button>
@@ -270,11 +259,11 @@ export default function SettingsPage() {
             </div>
           </div>
           {hydraTest && (
-            <div className={`test-result ${hydraTest.ok ? 'test-ok' : 'test-fail'}`}>
+            <div className={'test-result ' + (hydraTest.ok ? 'test-ok' : 'test-fail')}>
               {hydraTest.ok ? <CheckCircle size={14} /> : <XCircle size={14} />} {hydraTest.msg}
             </div>
           )}
-          <div className="btn-row" style={{ marginTop: '12px' }}>
+          <div className="btn-row" style={{marginTop:'12px'}}>
             <button className="btn-save" onClick={async () => { await saveSetting('hydra2_url', hydraUrl); await saveSetting('hydra2_api_key', hydraKey); }}>
               <Save size={14} /> Save
             </button>
@@ -286,14 +275,14 @@ export default function SettingsPage() {
 
         {/* Download Paths */}
         <div className="settings-card">
-          <div className="card-title">📁 Download Pathe</div>
+          <div className="card-title">📁 Download Paths</div>
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Movies</label>
               <input className="form-input" value={moviesPath} onChange={e => setMoviesPath(e.target.value)} />
             </div>
             <div className="form-group">
-              <label className="form-label">Serien</label>
+              <label className="form-label">TV Shows</label>
               <input className="form-input" value={seriesPath} onChange={e => setSeriesPath(e.target.value)} />
             </div>
           </div>
@@ -302,34 +291,33 @@ export default function SettingsPage() {
           </button>
         </div>
 
-        {/* Indexerss */}
+        {/* Indexers */}
         <div className="settings-card">
-          <div className="card-title">🌐 Torrent Indexerss</div>
+          <div className="card-title">🌐 Indexers</div>
           <div className="indexer-list">
-            {indexers.length === 0 && <div style={{ color: '#4b5563', fontSize: '14px' }}>Noch keine Indexers konfiguriert</div>}
+            {indexers.length === 0 && <div style={{color:'#4b5563',fontSize:'14px'}}>No indexers configured yet</div>}
             {indexers.map(idx => (
               <div key={idx.id} className="indexer-row">
                 <span className="indexer-name">{idx.name}</span>
                 <span className="indexer-type">{idx.type}</span>
                 <span className="indexer-url">{idx.url}</span>
-                <button className="del-btn" onClick={() => deleteIndexers(idx.id)}><Trash2 size={14} /></button>
+                <button className="del-btn" onClick={() => deleteIndexer(idx.id)}><Trash2 size={14} /></button>
               </div>
             ))}
           </div>
-
-          {showAddIndexers ? (
+          {showAddIndexer ? (
             <div className="add-indexer-form">
-              <div className="add-indexer-title">Neuer Indexers</div>
+              <div style={{fontSize:'13px',fontWeight:'600',color:'#9ca3af',marginBottom:'12px'}}>New Indexer</div>
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Name</label>
-                  <input className="form-input" value={newIndexers.name} onChange={e => setNewIndexers(p => ({ ...p, name: e.target.value }))} placeholder="z.B. NZBgeek" />
+                  <input className="form-input" value={newIndexer.name} onChange={e => setNewIndexer(p => ({...p, name: e.target.value}))} placeholder="e.g. NZBgeek" />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Type</label>
-                  <select className="form-input" value={newIndexers.type} onChange={e => setNewIndexers(p => ({ ...p, type: e.target.value }))}>
-                    <option value="torznab">Torznab</option>
-                    <option value="newznab">Newznab</option>
+                  <select className="form-input" value={newIndexer.type} onChange={e => setNewIndexer(p => ({...p, type: e.target.value}))}>
+                    <option value="newznab">Newznab (NZB)</option>
+                    <option value="torznab">Torznab (Torrent)</option>
                     <option value="torrent_api">Torrent API</option>
                   </select>
                 </div>
@@ -337,128 +325,26 @@ export default function SettingsPage() {
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">URL</label>
-                  <input className="form-input" value={newIndexers.url} onChange={e => setNewIndexers(p => ({ ...p, url: e.target.value }))} placeholder="https://..." />
+                  <input className="form-input" value={newIndexer.url} onChange={e => setNewIndexer(p => ({...p, url: e.target.value}))} placeholder="https://..." />
                 </div>
                 <div className="form-group">
                   <label className="form-label">API Key</label>
-                  <input className="form-input" value={newIndexers.api_key} onChange={e => setNewIndexers(p => ({ ...p, api_key: e.target.value }))} placeholder="Optional" />
+                  <input className="form-input" value={newIndexer.api_key} onChange={e => setNewIndexer(p => ({...p, api_key: e.target.value}))} placeholder="Optional" />
                 </div>
               </div>
               <div className="btn-row">
-                <button className="btn-save" onClick={addIndexers}><Plus size={14} /> Add</button>
-                <button className="btn-test" onClick={() => setShowAddIndexers(false)}>Abbrechen</button>
+                <button className="btn-save" onClick={addIndexer}><Plus size={14} /> Add</button>
+                <button className="btn-test" onClick={() => setShowAddIndexer(false)}>Cancel</button>
               </div>
             </div>
           ) : (
-            <button className="btn-test" onClick={() => setShowAddIndexers(true)}>
-              <Plus size={14} /> Add Indexers
+            <button className="btn-test" onClick={() => setShowAddIndexer(true)}>
+              <Plus size={14} /> Add Indexer
             </button>
           )}
         </div>
+
       </div>
     </>
-  );
-}
-
-// ── User Management Panel ─────────────────────────────────────────────────────
-function UsersPanel() {
-  const [users, setUsers] = useState([]);
-  const [showAdd, setShowAdd] = useState(false);
-  const [newUser, setNewUser] = useState({ username: '', password: '', role: 'user' });
-  const [passwords, setPasswords] = useState({});
-  const [loading, setLoading] = useState(false);
-
-  const load = () => {
-    api.get('/auth/users').then(r => setUsers(r.data.users || [])).catch(() => {});
-  };
-  useEffect(() => { load(); }, []);
-
-  const handleCreate = async () => {
-    if (!newUser.username || !newUser.password) { toast.error('Fill in all fields'); return; }
-    setLoading(true);
-    try {
-      await api.post('/auth/users', newUser);
-      toast.success('User "' + newUser.username + '" created');
-      setNewUser({ username: '', password: '', role: 'user' });
-      setShowAdd(false);
-      load();
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to create user');
-    } finally { setLoading(false); }
-  };
-
-  const handleDelete = async (id, username) => {
-    if (!window.confirm('Delete user "' + username + '"?')) return;
-    try {
-      await api.delete('/auth/users/' + id);
-      toast.success('User deleted');
-      load();
-    } catch (err) { toast.error(err.response?.data?.error || 'Failed to delete'); }
-  };
-
-  const handleChangePw = async (id, username) => {
-    const pw = passwords[id];
-    if (!pw || pw.length < 8) { toast.error('Password must be at least 8 characters'); return; }
-    try {
-      await api.patch('/auth/users/' + id + '/password', { password: pw });
-      toast.success('Password updated for "' + username + '"');
-      setPasswords(prev => ({ ...prev, [id]: '' }));
-    } catch (err) { toast.error(err.response?.data?.error || 'Failed to update password'); }
-  };
-
-  return (
-    <div>
-      <div style={{display:'flex',flexDirection:'column',gap:'8px',marginBottom:'16px'}}>
-        {users.map(u => (
-          <div key={u.id} style={{background:'#1a1a2e',borderRadius:'8px',padding:'12px 14px'}}>
-            <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'8px'}}>
-              <div style={{width:'32px',height:'32px',borderRadius:'50%',background:'linear-gradient(135deg,#6366f1,#8b5cf6)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Space Mono',fontSize:'12px',color:'white',fontWeight:700,flexShrink:0}}>
-                {u.username[0].toUpperCase()}
-              </div>
-              <div style={{flex:1}}>
-                <div style={{fontSize:'14px',fontWeight:'600',color:'#e8e8f0'}}>{u.username}</div>
-                <div style={{fontSize:'11px',color:'#4b5563'}}>Last login: {u.last_login ? new Date(u.last_login).toLocaleDateString() : 'Never'}</div>
-              </div>
-              <span style={{fontSize:'11px',padding:'2px 8px',borderRadius:'4px',background:u.role==='admin'?'rgba(99,102,241,0.15)':'rgba(107,114,128,0.15)',color:u.role==='admin'?'#6366f1':'#9ca3af',fontWeight:500}}>{u.role}</span>
-              <button onClick={() => handleDelete(u.id, u.username)} style={{background:'none',border:'none',color:'#4b5563',cursor:'pointer',padding:'4px'}} title="Delete">✕</button>
-            </div>
-            <div style={{display:'flex',gap:'6px'}}>
-              <input
-                style={{flex:1,padding:'6px 10px',background:'#0f0f1a',border:'1px solid #2a2a4e',borderRadius:'6px',color:'#e8e8f0',fontSize:'12px',fontFamily:'DM Sans,sans-serif',outline:'none'}}
-                type="password"
-                placeholder="New password..."
-                value={passwords[u.id] || ''}
-                onChange={e => setPasswords(prev => ({ ...prev, [u.id]: e.target.value }))}
-              />
-              <button
-                onClick={() => handleChangePw(u.id, u.username)}
-                style={{padding:'6px 12px',background:'rgba(99,102,241,0.1)',border:'1px solid rgba(99,102,241,0.3)',borderRadius:'6px',color:'#6366f1',fontSize:'12px',fontWeight:'600',cursor:'pointer',fontFamily:'DM Sans,sans-serif',whiteSpace:'nowrap'}}>
-                Change Password
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {showAdd ? (
-        <div style={{background:'#1a1a2e',borderRadius:'8px',padding:'14px',display:'flex',flexDirection:'column',gap:'10px'}}>
-          <div style={{fontSize:'13px',fontWeight:'600',color:'#e8e8f0'}}>New User</div>
-          <div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
-            <input className="form-input" style={{flex:1,minWidth:'140px'}} placeholder="Username" value={newUser.username} onChange={e => setNewUser(p => ({...p, username: e.target.value}))} />
-            <input className="form-input" style={{flex:1,minWidth:'140px'}} type="password" placeholder="Password (min 8 chars)" value={newUser.password} onChange={e => setNewUser(p => ({...p, password: e.target.value}))} />
-            <select className="form-input" style={{width:'110px'}} value={newUser.role} onChange={e => setNewUser(p => ({...p, role: e.target.value}))}>
-              <option value="user">User</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
-          <div style={{display:'flex',gap:'8px'}}>
-            <button className="btn-save" type="button" onClick={handleCreate} disabled={loading}>{loading ? 'Creating...' : 'Create User'}</button>
-            <button className="btn-test" type="button" onClick={() => setShowAdd(false)}>Cancel</button>
-          </div>
-        </div>
-      ) : (
-        <button className="btn-test" type="button" onClick={() => setShowAdd(true)}>+ Add User</button>
-      )}
-    </div>
   );
 }

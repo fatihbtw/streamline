@@ -25,18 +25,21 @@ export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { setAuth } = useAuthStore();
+  const { login } = useAuthStore();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await api.post('/auth/login', { username, password });
-      setAuth(res.data.token, res.data.user);
-      navigate('/');
+      const result = await login(username, password);
+      if (result.success) {
+        navigate('/');
+      } else {
+        toast.error(result.error || 'Login failed');
+      }
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Login failed');
+      toast.error('Login failed');
     } finally { setLoading(false); }
   };
 

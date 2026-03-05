@@ -128,6 +128,57 @@ router.post('/test-connection',
 );
 
 
+
+
+// GET /api/settings/meta-provider
+router.get('/meta-provider', requireAdmin, (req, res) => {
+  const db = getDB();
+  const provider = db.prepare("SELECT value FROM settings WHERE key = 'meta_provider'").get()?.value || 'tmdb';
+  const tvdbKey = db.prepare("SELECT value FROM settings WHERE key = 'tvdb_api_key'").get()?.value || '';
+  const tmdbKey = db.prepare("SELECT value FROM settings WHERE key = 'tmdb_api_key'").get()?.value || '';
+  res.json({ provider, tvdb_api_key: tvdbKey, tmdb_api_key: tmdbKey });
+});
+
+// POST /api/settings/meta-provider
+router.post('/meta-provider', requireAdmin,
+  body('provider').isIn(['tmdb', 'tvdb']),
+  body('tmdb_api_key').optional().isString(),
+  body('tvdb_api_key').optional().isString(),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    const db = getDB();
+    const { provider, tmdb_api_key, tvdb_api_key } = req.body;
+    db.prepare("INSERT OR REPLACE INTO settings (key,value) VALUES ('meta_provider',?)").run(provider);
+    if (tmdb_api_key !== undefined) db.prepare("INSERT OR REPLACE INTO settings (key,value) VALUES ('tmdb_api_key',?)").run(tmdb_api_key);
+    if (tvdb_api_key !== undefined) db.prepare("INSERT OR REPLACE INTO settings (key,value) VALUES ('tvdb_api_key',?)").run(tvdb_api_key);
+    res.json({ success: true });
+  }
+);
+
+// ── CORS / Allowed Origins ────────────────────────────────────────────────────
+
+// GET /api/settings/cors
+router.get('/cors', requireAdmin, (req, res) => {
+  const db = getDB();
+  const row = db.prepare("SELECT value FROM settings WHERE key = 'allowed_origins'").get();
+  const origins = row?.value ? row.value.split(',').map(o => o.trim()).filter(Boolean) : [];
+  res.json({ origins });
+});
+
+// POST /api/settings/cors
+router.post('/cors', requireAdmin,
+  body('origins').isArray(),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    const db = getDB();
+    const value = req.body.origins.map(o => o.trim()).filter(Boolean).join(',');
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('allowed_origins', ?)").run(value);
+    res.json({ success: true, origins: req.body.origins });
+  }
+);
+
 // ── Custom Formats ──────────────────────────────────────────────────────────
 
 // GET /api/settings/custom-formats

@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
 # Security: run as non-root user
-RUN addgroup -g 1001 -S mediaflow && adduser -u 1001 -S mediaflow -G mediaflow
+RUN addgroup -g 1001 -S streamline && adduser -u 1001 -S streamline -G streamline
 
 WORKDIR /app
 
@@ -10,12 +10,12 @@ COPY package*.json ./
 RUN npm install --omit=dev && npm cache clean --force
 
 # Copy application code
-COPY --chown=mediaflow:mediaflow . .
+COPY --chown=streamline:streamline . .
 
 # Create necessary directories
-RUN mkdir -p data logs && chown -R mediaflow:mediaflow /app
+RUN mkdir -p data logs && chown -R streamline:streamline /app
 
-USER mediaflow
+USER streamline
 
 EXPOSE 3001
 

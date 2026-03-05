@@ -89,7 +89,7 @@ export default function SearchPage() {
     if (!query.trim()) return;
     setLoading(true); setSearched(true);
     try {
-      const res = await api.get('/search/tmdb', { params: { q: query, type } });
+      const res = await api.get('/search/tmdb', { params: { q: query, type } }); // falls back to /search/tvdb if configured
       setResults(res.data.results || []);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Search failed');

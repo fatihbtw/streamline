@@ -14,6 +14,8 @@ import SettingsPage from './pages/SettingsPage';
 import MediaDetailPage from './pages/MediaDetailPage';
 import ImportPage from './pages/ImportPage';
 import CustomFormatsPage from './pages/CustomFormatsPage';
+import UsersPage from './pages/UsersPage';
+import OnboardingPage from './pages/OnboardingPage';
 
 function ProtectedRoute({ children }) {
   const token = useAuthStore(s => s.token);
@@ -24,13 +26,17 @@ function ProtectedRoute({ children }) {
 export default function App() {
   const { token, fetchMe } = useAuthStore();
   const [setupDone, setSetupDone] = useState(null);
+  const [onboarding, setOnboarding] = useState(null); // null=checking, {required,expiresAt}
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    api.get('/auth/setup-status')
-      .then(r => setSetupDone(r.data.setupComplete))
-      .catch(() => setSetupDone(true))
-      .finally(() => setChecking(false));
+    Promise.all([
+      api.get('/auth/setup-status').then(r => r.data).catch(() => ({ setupComplete: true })),
+      api.get('/onboarding/status').then(r => r.data).catch(() => ({ required: false })),
+    ]).then(([setup, ob]) => {
+      setSetupDone(setup.setupComplete);
+      setOnboarding(ob);
+    }).finally(() => setChecking(false));
   }, []);
 
   useEffect(() => {
@@ -44,6 +50,19 @@ export default function App() {
           LOADING...
         </div>
       </div>
+    );
+  }
+
+  // Show onboarding wizard on first launch
+  if (onboarding?.required) {
+    return (
+      <OnboardingPage
+        expiresAt={onboarding.expiresAt}
+        onComplete={() => {
+          setOnboarding({ required: false });
+          setSetupDone(true);
+        }}
+      />
     );
   }
 
@@ -72,6 +91,7 @@ export default function App() {
           <Route path="settings" element={<SettingsPage />} />
           <Route path="import" element={<ImportPage />} />
           <Route path="custom-formats" element={<CustomFormatsPage />} />
+          <Route path="users" element={<UsersPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
