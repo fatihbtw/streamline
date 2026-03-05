@@ -1,6 +1,6 @@
 services:
   backend:
-    image: DEINUSER/streamline-backend:latest
+    image: fatihbtw/streamline-backend:latest
     container_name: streamline-backend
     restart: unless-stopped
     environment:
@@ -29,7 +29,7 @@ services:
       - no-new-privileges:true
 
   bot:
-    image: DEINUSER/streamline-bot:latest
+    image: fatihbtw/streamline-bot:latest
     container_name: streamline-bot
     restart: unless-stopped
     environment:
@@ -52,7 +52,7 @@ services:
       - no-new-privileges:true
 
   frontend:
-    image: DEINUSER/streamline-frontend:latest
+    image: fatihbtw/streamline-frontend:latest
     container_name: streamline-frontend
     restart: unless-stopped
     ports:
