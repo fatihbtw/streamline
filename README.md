@@ -6,6 +6,19 @@
 ![Docker](https://img.shields.io/badge/docker-ready-2496ED?style=flat-square&logo=docker)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
 
+## Screenshots
+
+> 📸 **Screenshots werden nach dem ersten Start hinzugefügt.**
+> Starte Streamline, mach Screenshots der folgenden Ansichten und lege sie in `docs/screenshots/` ab:
+
+| Dashboard | Mediathek |
+|---|---|
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Bibliothek](docs/screenshots/library.png) |
+
+| Suche | Einstellungen |
+|---|---|
+| ![Suche](docs/screenshots/search.png) | ![Einstellungen](docs/screenshots/settings.png) |
+
 ---
 
 ## Features
