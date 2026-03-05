@@ -44,6 +44,13 @@ function ApiKeyInput({ value, onChange, placeholder }) {
         {show ? <EyeOff size={15} /> : <Eye size={15} />}
       </button>
 
+
+
+      {/* User Management */}
+      <div className="settings-card">
+        <div className="card-title">👤 Users</div>
+        <UsersPanel />
+      </div>
     </div>
   );
 }
@@ -129,6 +136,7 @@ function _CustomFormatsPanel() {
     </div>
   );
 }
+
 
 export default function SettingsPage() {
   const [tmdbKey, setTmdbKey] = useState('');
@@ -349,5 +357,108 @@ export default function SettingsPage() {
         </div>
       </div>
     </>
+  );
+}
+
+// ── User Management Panel ─────────────────────────────────────────────────────
+function UsersPanel() {
+  const [users, setUsers] = useState([]);
+  const [showAdd, setShowAdd] = useState(false);
+  const [newUser, setNewUser] = useState({ username: '', password: '', role: 'user' });
+  const [passwords, setPasswords] = useState({});
+  const [loading, setLoading] = useState(false);
+
+  const load = () => {
+    api.get('/auth/users').then(r => setUsers(r.data.users || [])).catch(() => {});
+  };
+  useEffect(() => { load(); }, []);
+
+  const handleCreate = async () => {
+    if (!newUser.username || !newUser.password) { toast.error('Fill in all fields'); return; }
+    setLoading(true);
+    try {
+      await api.post('/auth/users', newUser);
+      toast.success('User "' + newUser.username + '" created');
+      setNewUser({ username: '', password: '', role: 'user' });
+      setShowAdd(false);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to create user');
+    } finally { setLoading(false); }
+  };
+
+  const handleDelete = async (id, username) => {
+    if (!window.confirm('Delete user "' + username + '"?')) return;
+    try {
+      await api.delete('/auth/users/' + id);
+      toast.success('User deleted');
+      load();
+    } catch (err) { toast.error(err.response?.data?.error || 'Failed to delete'); }
+  };
+
+  const handleChangePw = async (id, username) => {
+    const pw = passwords[id];
+    if (!pw || pw.length < 8) { toast.error('Password must be at least 8 characters'); return; }
+    try {
+      await api.patch('/auth/users/' + id + '/password', { password: pw });
+      toast.success('Password updated for "' + username + '"');
+      setPasswords(prev => ({ ...prev, [id]: '' }));
+    } catch (err) { toast.error(err.response?.data?.error || 'Failed to update password'); }
+  };
+
+  return (
+    <div>
+      <div style={{display:'flex',flexDirection:'column',gap:'8px',marginBottom:'16px'}}>
+        {users.map(u => (
+          <div key={u.id} style={{background:'#1a1a2e',borderRadius:'8px',padding:'12px 14px'}}>
+            <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'8px'}}>
+              <div style={{width:'32px',height:'32px',borderRadius:'50%',background:'linear-gradient(135deg,#6366f1,#8b5cf6)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Space Mono',fontSize:'12px',color:'white',fontWeight:700,flexShrink:0}}>
+                {u.username[0].toUpperCase()}
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:'14px',fontWeight:'600',color:'#e8e8f0'}}>{u.username}</div>
+                <div style={{fontSize:'11px',color:'#4b5563'}}>Last login: {u.last_login ? new Date(u.last_login).toLocaleDateString() : 'Never'}</div>
+              </div>
+              <span style={{fontSize:'11px',padding:'2px 8px',borderRadius:'4px',background:u.role==='admin'?'rgba(99,102,241,0.15)':'rgba(107,114,128,0.15)',color:u.role==='admin'?'#6366f1':'#9ca3af',fontWeight:500}}>{u.role}</span>
+              <button onClick={() => handleDelete(u.id, u.username)} style={{background:'none',border:'none',color:'#4b5563',cursor:'pointer',padding:'4px'}} title="Delete">✕</button>
+            </div>
+            <div style={{display:'flex',gap:'6px'}}>
+              <input
+                style={{flex:1,padding:'6px 10px',background:'#0f0f1a',border:'1px solid #2a2a4e',borderRadius:'6px',color:'#e8e8f0',fontSize:'12px',fontFamily:'DM Sans,sans-serif',outline:'none'}}
+                type="password"
+                placeholder="New password..."
+                value={passwords[u.id] || ''}
+                onChange={e => setPasswords(prev => ({ ...prev, [u.id]: e.target.value }))}
+              />
+              <button
+                onClick={() => handleChangePw(u.id, u.username)}
+                style={{padding:'6px 12px',background:'rgba(99,102,241,0.1)',border:'1px solid rgba(99,102,241,0.3)',borderRadius:'6px',color:'#6366f1',fontSize:'12px',fontWeight:'600',cursor:'pointer',fontFamily:'DM Sans,sans-serif',whiteSpace:'nowrap'}}>
+                Change Password
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {showAdd ? (
+        <div style={{background:'#1a1a2e',borderRadius:'8px',padding:'14px',display:'flex',flexDirection:'column',gap:'10px'}}>
+          <div style={{fontSize:'13px',fontWeight:'600',color:'#e8e8f0'}}>New User</div>
+          <div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
+            <input className="form-input" style={{flex:1,minWidth:'140px'}} placeholder="Username" value={newUser.username} onChange={e => setNewUser(p => ({...p, username: e.target.value}))} />
+            <input className="form-input" style={{flex:1,minWidth:'140px'}} type="password" placeholder="Password (min 8 chars)" value={newUser.password} onChange={e => setNewUser(p => ({...p, password: e.target.value}))} />
+            <select className="form-input" style={{width:'110px'}} value={newUser.role} onChange={e => setNewUser(p => ({...p, role: e.target.value}))}>
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div style={{display:'flex',gap:'8px'}}>
+            <button className="btn-save" type="button" onClick={handleCreate} disabled={loading}>{loading ? 'Creating...' : 'Create User'}</button>
+            <button className="btn-test" type="button" onClick={() => setShowAdd(false)}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <button className="btn-test" type="button" onClick={() => setShowAdd(true)}>+ Add User</button>
+      )}
+    </div>
   );
 }

@@ -89,8 +89,8 @@ bot.onText(/\/start/, (msg) => {
 
 *Suche & Hinzufügen*
 /search <Titel> — TMDB durchsuchen
-/add\\_movie <TMDB-ID> — Film hinzufügen
-/add\\_series <TMDB-ID> — Serie hinzufügen
+/add\\_movie <Title or TMDB-ID> — Add movie
+/add\\_series <Title or TMDB-ID> — Add TV show
 
 *Downloads*
 /queue — SABnzbd Queue
@@ -175,7 +175,7 @@ bot.onText(/\/wanted/, (msg) => {
 bot.onText(/\/search (.+)/, async (msg, match) => {
   if (!isAllowed(msg)) return deny(msg.chat.id);
   const query = match[1].trim().slice(0, 100);
-  bot.sendMessage(msg.chat.id, `🔍 Suche nach _${query}_...`, { parse_mode: 'Markdown' });
+  bot.sendMessage(msg.chat.id, `🔍 Searching for _${query}_...`, { parse_mode: 'Markdown' });
 
   try {
     const data = await apiGet(`/search/tmdb?q=${encodeURIComponent(query)}&type=both`);
@@ -190,7 +190,7 @@ bot.onText(/\/search (.+)/, async (msg, match) => {
       callback_data: `add_${r.type}_${r.tmdb_id}_${encodeURIComponent(r.title.slice(0, 30))}`,
     }]);
 
-    bot.sendMessage(msg.chat.id, `🎯 *${results.length} Ergebnisse für "${query}"*\nTippe zum Hinzufügen:`, {
+    bot.sendMessage(msg.chat.id, `🎯 *${results.length} results for "${query}"*\nTap to add:`, {
       parse_mode: 'Markdown',
       reply_markup: { inline_keyboard: keyboard },
     });
@@ -210,74 +210,93 @@ bot.on('callback_query', async (query) => {
   bot.answerCallbackQuery(query.id, { text: `Füge "${title}" hinzu...` });
 
   try {
-    // Fetch full details from TMDB
-    const details = await apiGet(`/search/tmdb/details/${type}/${tmdbId}`);
-    await apiPost('/media', {
-      type,
-      title: details.title,
-      tmdb_id: details.tmdb_id,
-      imdb_id: details.imdb_id,
-      year: details.year ? parseInt(details.year) : undefined,
-      poster_url: details.poster_url,
-      backdrop_url: details.backdrop_url,
-      overview: details.overview,
-      rating: details.rating,
-      genres: details.genres,
-      quality_profile: '1080p',
-    });
-
-    const icon = type === 'movie' ? '🎬' : '📺';
-    bot.sendMessage(query.message.chat.id,
-      `${icon} *${details.title}* wurde zur Mediathek hinzugefügt! ✅`,
-      { parse_mode: 'Markdown' }
-    );
-
+    await addByTmdbId(query.message.chat.id, type, tmdbId);
     // Also notify Discord
+    const icon = type === 'movie' ? '🎬' : '📺';
     await discordNotify({
-      title: `${icon} Neu hinzugefügt`,
-      description: `**${details.title}** (${details.year || '?'}) wurde über Telegram hinzugefügt.`,
+      title: `${icon} Added via Telegram`,
+      description: `**${title}** was added via Telegram.`,
       color: 0x6366f1,
-      thumbnail: details.poster_url,
     });
   } catch (err) {
     if (err.response?.status === 409) {
-      bot.sendMessage(query.message.chat.id, `⚠️ *${title}* ist bereits in der Mediathek.`, { parse_mode: 'Markdown' });
+      bot.sendMessage(query.message.chat.id, `⚠️ *${title}* is already in the library.`, { parse_mode: 'Markdown' });
     } else {
-      bot.sendMessage(query.message.chat.id, `❌ Fehler beim Hinzufügen: ${err.message}`);
+      bot.sendMessage(query.message.chat.id, `❌ Error: ${err.message}`);
     }
   }
 });
 
-// ── Command: /add_movie <tmdb_id> ─────────────────────────────────────────────
-bot.onText(/\/add_movie (\d+)/, async (msg, match) => {
+// ── Command: /add_movie <tmdb_id or title> ───────────────────────────────────
+bot.onText(/\/add_movie (.+)/, async (msg, match) => {
   if (!isAllowed(msg)) return deny(msg.chat.id);
-  await addByTmdbId(msg.chat.id, 'movie', match[1]);
+  const input = match[1].trim();
+  // If it's a number, treat as TMDB ID directly
+  if (/^\d+$/.test(input)) {
+    await addByTmdbId(msg.chat.id, 'movie', input);
+  } else {
+    // Search by title and add first result
+    await addByTitle(msg.chat.id, 'movie', input);
+  }
 });
 
-bot.onText(/\/add_series (\d+)/, async (msg, match) => {
+bot.onText(/\/add_series (.+)/, async (msg, match) => {
   if (!isAllowed(msg)) return deny(msg.chat.id);
-  await addByTmdbId(msg.chat.id, 'series', match[1]);
+  const input = match[1].trim();
+  if (/^\d+$/.test(input)) {
+    await addByTmdbId(msg.chat.id, 'series', input);
+  } else {
+    await addByTitle(msg.chat.id, 'series', input);
+  }
 });
 
-async function addByTmdbId(chatId, type, tmdbId) {
+// Add by title — search TMDB and show top results as buttons
+async function addByTitle(chatId, type, query) {
+  bot.sendMessage(chatId, `🔍 Searching for _${query}_...`, { parse_mode: 'Markdown' });
   try {
-    const details = await apiGet(`/search/tmdb/details/${type}/${tmdbId}`);
+    const data = await apiGet(`/search/tmdb?q=${encodeURIComponent(query)}&type=${type}`);
+    const results = (data.results || []).slice(0, 5);
+    if (!results.length) {
+      return bot.sendMessage(chatId, `📭 No results found for "${query}".`);
+    }
+    // If only one result, add directly
+    if (results.length === 1) {
+      return addByTmdbId(chatId, results[0].type, results[0].tmdb_id, results[0]);
+    }
+    // Otherwise show buttons to pick
+    const keyboard = results.map(r => [{
+      text: `${r.type === 'movie' ? '🎬' : '📺'} ${r.title}${r.year ? ` (${r.year})` : ''}`,
+      callback_data: `add_${r.type}_${r.tmdb_id}_${encodeURIComponent(r.title.slice(0, 20))}`,
+    }]);
+    bot.sendMessage(chatId, `🎯 *Found ${results.length} results — pick one:*`, {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: keyboard },
+    });
+  } catch (err) {
+    bot.sendMessage(chatId, `❌ Search failed: ${err.message}`);
+  }
+}
+
+async function addByTmdbId(chatId, type, tmdbId, knownDetails = null) {
+  try {
+    const details = knownDetails || await apiGet(`/search/tmdb/details/${type}/${tmdbId}`);
     await apiPost('/media', {
       type,
       title: details.title,
-      tmdb_id: details.tmdb_id,
+      tmdb_id: details.tmdb_id || tmdbId,
       year: details.year ? parseInt(details.year) : undefined,
       poster_url: details.poster_url,
       overview: details.overview,
       rating: details.rating,
       quality_profile: '1080p',
     });
-    bot.sendMessage(chatId, `✅ *${details.title}* hinzugefügt!`, { parse_mode: 'Markdown' });
+    const icon = type === 'movie' ? '🎬' : '📺';
+    bot.sendMessage(chatId, `${icon} *${details.title}*${details.year ? ` (${details.year})` : ''} added to library! ✅`, { parse_mode: 'Markdown' });
   } catch (err) {
     if (err.response?.status === 409) {
-      bot.sendMessage(chatId, '⚠️ Bereits in der Mediathek.');
+      bot.sendMessage(chatId, `⚠️ Already in library.`);
     } else {
-      bot.sendMessage(chatId, `❌ Fehler: ${err.message}`);
+      bot.sendMessage(chatId, `❌ Error: ${err.message}`);
     }
   }
 }

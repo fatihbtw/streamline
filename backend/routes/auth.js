@@ -98,4 +98,78 @@ router.get('/setup-status', (req, res) => {
   res.json({ setupComplete: setting?.value === 'true' });
 });
 
+
+// ── User Management ──────────────────────────────────────────────────────────
+
+// GET /api/auth/users — list all users (admin only)
+router.get('/users', authenticateToken, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  const db = getDB();
+  const users = db.prepare('SELECT id, username, role, created_at, last_login FROM users ORDER BY created_at').all();
+  res.json({ users });
+});
+
+// POST /api/auth/users — create user (admin only)
+router.post('/users',
+  authenticateToken,
+  validateUsername,
+  validatePassword,
+  body('role').optional().isIn(['admin', 'user']),
+  async (req, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const db = getDB();
+    const { username, password, role = 'user' } = req.body;
+    const exists = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+    if (exists) return res.status(409).json({ error: 'Username already taken' });
+
+    const hash = await bcrypt.hash(password, SALT_ROUNDS);
+    const id = uuidv4();
+    db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(id, username, hash, role);
+    logger.info('User created', { username, role, by: req.user.username });
+    res.status(201).json({ id, username, role });
+  }
+);
+
+// PATCH /api/auth/users/:id/password — change password (admin or self)
+router.patch('/users/:id/password',
+  authenticateToken,
+  validatePassword,
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const db = getDB();
+    const target = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+    if (!target) return res.status(404).json({ error: 'User not found' });
+
+    // Admin can change anyone, user can only change own password
+    if (req.user.role !== 'admin' && req.user.id !== target.id) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    const hash = await bcrypt.hash(req.body.password, SALT_ROUNDS);
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, target.id);
+    logger.info('Password changed', { username: target.username, by: req.user.username });
+    res.json({ success: true });
+  }
+);
+
+// DELETE /api/auth/users/:id — delete user (admin only, can't delete self)
+router.delete('/users/:id', authenticateToken, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  if (req.user.id === req.params.id) return res.status(400).json({ error: 'Cannot delete yourself' });
+
+  const db = getDB();
+  const target = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+
+  db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+  logger.info('User deleted', { username: target.username, by: req.user.username });
+  res.json({ success: true });
+});
+
 module.exports = router;
+
