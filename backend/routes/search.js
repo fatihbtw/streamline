@@ -164,12 +164,17 @@ router.get('/nzb',
       });
     }
 
+    // Determine category from media context (pass ?cat=tv or ?cat=movie)
+    const catHint = req.query.cat; // 'tv' | 'movie' | undefined
+    // Newznab categories: 5000=TV, 5030=TV/HD, 2000=Movie, 2040=Movie/HD
+    const cats = catHint === 'movie' ? '2000,2040,2045' : catHint === 'tv' ? '5000,5030,5040' : '2000,2040,2045,5000,5030,5040';
+
     // Search all sources in parallel
     const allResults = (await Promise.all(
       sources.map(async (source) => {
         try {
           const response = await axios.get(`${source.url}/api`, {
-            params: { t: 'search', apikey: source.apiKey, q, o: 'json' },
+            params: { t: 'search', apikey: source.apiKey, q, o: 'json', cat: cats, limit: 100 },
             timeout: 15000,
           });
           return parseNewznabItems(response.data, source.name);
@@ -178,7 +183,19 @@ router.get('/nzb',
           return [];
         }
       })
-    )).flat();
+    )).flat()
+    // Filter out non-video results: must be > 50MB or have video-like name
+    .filter(r => {
+      if (!r.size) return true; // keep if size unknown
+      const mb = Number(r.size) / 1024 / 1024;
+      if (mb < 50) return false; // skip tiny files (music, samples, etc.)
+      // Skip obvious non-video extensions
+      const lower = r.title.toLowerCase();
+      if (lower.endsWith('.mp3') || lower.endsWith('.flac') || lower.endsWith('.zip') && mb < 500) return false;
+      return true;
+    })
+    // Sort by date descending
+    .sort((a, b) => new Date(b.pubDate || 0) - new Date(a.pubDate || 0));
 
     logger.info('NZB search', { q, results: allResults.length });
     res.json({ results: allResults, sources: sources.map(s => s.name) });

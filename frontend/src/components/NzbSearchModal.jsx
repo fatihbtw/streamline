@@ -113,7 +113,7 @@ function NzbRow({ item }) {
   );
 }
 
-export default function NzbSearchModal({ title, onClose }) {
+export default function NzbSearchModal({ title, mediaType, onClose }) {
   const [query, setQuery] = useState(title || '');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -127,7 +127,8 @@ export default function NzbSearchModal({ title, onClose }) {
     setError(null);
     setSearched(true);
     try {
-      const res = await api.get('/search/nzb', { params: { q: query } });
+      const cat = mediaType === 'movie' ? 'movie' : mediaType === 'series' ? 'tv' : undefined;
+      const res = await api.get('/search/nzb', { params: { q: query, ...(cat && { cat }) } });
       setResults(res.data.results || []);
     } catch (err) {
       setError(err.response?.data?.error || 'Suche fehlgeschlagen — Indexer in den Settings prüfen.');

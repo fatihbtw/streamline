@@ -116,7 +116,7 @@ export default function MediaDetailPage() {
           ))}
         </div>
       )}
-      {showNzb && <NzbSearchModal title={item?.title} onClose={() => setShowNzb(false)} />}
+      {showNzb && <NzbSearchModal title={item?.title} mediaType={item?.type} onClose={() => setShowNzb(false)} />}
     </>
   );
 }
