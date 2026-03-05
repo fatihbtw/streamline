@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, Search, Download, AlertCircle, ChevronUp, ChevronDown, Filter, Clock, HardDrive, Rss } from 'lucide-react';
+import { X, Search, Download, AlertCircle, ChevronUp, ChevronDown, Filter, Info, Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 
@@ -11,7 +11,14 @@ const styles = `
   .nzb-subtitle { font-size:12px;color:#6b7280;margin-top:2px; }
   .nzb-close { background:none;border:none;color:#6b7280;cursor:pointer;padding:4px;border-radius:6px; }
   .nzb-close:hover { color:#e8e8f0;background:#1a1a2e; }
-
+  .search-hint { margin:12px 24px 0;padding:10px 14px;background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.2);border-radius:8px;display:flex;align-items:flex-start;gap:8px;font-size:12px;color:#818cf8;line-height:1.5; }
+  .search-hint svg { flex-shrink:0;margin-top:1px; }
+  .hint-orig { font-weight:700;color:#a5b4fc; }
+  .query-chips { padding:10px 24px 0;display:flex;gap:6px;flex-wrap:wrap;align-items:center; }
+  .chips-label { font-size:11px;color:#4b5563;text-transform:uppercase;letter-spacing:0.05em;margin-right:4px;flex-shrink:0; }
+  .chip { padding:4px 12px;border-radius:20px;font-size:12px;font-weight:500;background:#1a1a2e;border:1px solid #2a2a4e;color:#9ca3af;cursor:pointer;transition:all 0.12s;font-family:'DM Sans',sans-serif; }
+  .chip:hover { border-color:#6366f1;color:#a5b4fc; }
+  .chip.active { background:rgba(99,102,241,0.15);border-color:#6366f1;color:#6366f1; }
   .nzb-toolbar { padding:12px 24px;border-bottom:1px solid #1a1a2e;display:flex;gap:10px;flex-wrap:wrap;align-items:center; }
   .nzb-input { flex:1;min-width:200px;padding:9px 14px;background:#1a1a2e;border:1px solid #2a2a4e;border-radius:8px;color:#e8e8f0;font-size:14px;font-family:'DM Sans',sans-serif;outline:none; }
   .nzb-input:focus { border-color:#6366f1; }
@@ -19,8 +26,6 @@ const styles = `
   .nzb-search-btn:disabled { opacity:0.6;cursor:not-allowed; }
   .filter-group { display:flex;align-items:center;gap:6px;font-size:13px;color:#6b7280;margin-left:auto; }
   .filter-select { padding:7px 10px;background:#1a1a2e;border:1px solid #2a2a4e;border-radius:6px;color:#e8e8f0;font-size:12px;font-family:'DM Sans',sans-serif;outline:none; }
-
-  /* Table */
   .nzb-table-wrap { flex:1;overflow:auto; }
   .nzb-table { width:100%;border-collapse:collapse;font-size:13px; }
   .nzb-table th { padding:9px 12px;text-align:left;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #1a1a2e;white-space:nowrap;cursor:pointer;user-select:none;background:#0f0f1a;position:sticky;top:0;z-index:1; }
@@ -28,55 +33,65 @@ const styles = `
   .nzb-table th.sorted { color:#6366f1; }
   .nzb-table td { padding:9px 12px;border-bottom:1px solid #0d0d18;vertical-align:middle; }
   .nzb-table tr:hover td { background:#131320; }
-
-  .col-source { width:50px; }
-  .col-age { width:80px;white-space:nowrap; }
-  .col-title { min-width:280px; }
-  .col-indexer { width:120px; }
-  .col-size { width:80px;white-space:nowrap; }
-  .col-peers { width:60px;text-align:center; }
-  .col-lang { width:90px; }
-  .col-quality { width:110px; }
-  .col-score { width:70px;text-align:center; }
-  .col-action { width:90px;text-align:right; }
-
+  .col-source { width:50px; } .col-age { width:80px;white-space:nowrap; } .col-title { min-width:280px; }
+  .col-indexer { width:120px; } .col-size { width:80px;white-space:nowrap; } .col-peers { width:60px;text-align:center; }
+  .col-lang { width:90px; } .col-quality { width:110px; } .col-score { width:70px;text-align:center; } .col-action { width:90px;text-align:right; }
   .source-badge { display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase; }
   .source-nzb { background:rgba(99,102,241,0.2);color:#6366f1; }
-  .source-torrent { background:rgba(16,185,129,0.2);color:#10b981; }
-
   .title-text { color:#d1d5db;line-height:1.3;word-break:break-word; }
-  .title-text a { color:#6366f1;text-decoration:none; }
-  .title-text a:hover { text-decoration:underline; }
-
-  .age-text { color:#9ca3af; }
-  .indexer-text { color:#9ca3af;font-size:12px; }
-  .size-text { color:#9ca3af; }
-  .peers-text { color:#9ca3af;text-align:center; }
-
+  .age-text { color:#9ca3af; } .indexer-text { color:#9ca3af;font-size:12px; } .size-text { color:#9ca3af; } .peers-text { color:#9ca3af;text-align:center; }
   .lang-badge { display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;background:rgba(99,102,241,0.1);color:#818cf8; }
   .quality-badge { display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap; }
-  .q-remux { background:rgba(139,92,246,0.2);color:#a78bfa; }
-  .q-2160p { background:rgba(16,185,129,0.2);color:#34d399; }
-  .q-1080p { background:rgba(99,102,241,0.2);color:#6366f1; }
-  .q-720p { background:rgba(245,158,11,0.2);color:#fbbf24; }
-  .q-other { background:rgba(107,114,128,0.15);color:#9ca3af; }
-
+  .q-remux { background:rgba(139,92,246,0.2);color:#a78bfa; } .q-2160p { background:rgba(16,185,129,0.2);color:#34d399; }
+  .q-1080p { background:rgba(99,102,241,0.2);color:#6366f1; } .q-720p { background:rgba(245,158,11,0.2);color:#fbbf24; } .q-other { background:rgba(107,114,128,0.15);color:#9ca3af; }
   .score-pos { color:#10b981;font-weight:700;font-family:'Space Mono',monospace; }
   .score-neg { color:#ef4444;font-weight:700;font-family:'Space Mono',monospace; }
   .score-zero { color:#6b7280;font-family:'Space Mono',monospace; }
-
   .grab-btn { padding:5px 12px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:6px;color:#6366f1;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:5px;white-space:nowrap;transition:background 0.15s;margin-left:auto; }
   .grab-btn:hover { background:rgba(99,102,241,0.25); }
   .grab-btn.grabbed { background:rgba(16,185,129,0.1);border-color:rgba(16,185,129,0.3);color:#10b981;cursor:default; }
   .grab-btn:disabled { opacity:0.5;cursor:not-allowed; }
-
   .nzb-footer { padding:10px 24px;border-top:1px solid #1a1a2e;display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#4b5563; }
   .nzb-empty { padding:40px;text-align:center;color:#4b5563;font-size:14px; }
+  .nzb-empty-tip { margin-top:10px;font-size:12px;color:#374151; }
   .nzb-error { padding:16px 24px;display:flex;align-items:center;gap:10px;color:#dc2626;font-size:14px;background:rgba(239,68,68,0.05); }
-
   .sort-icon { display:inline-block;margin-left:4px;opacity:0.5;vertical-align:middle; }
   .sorted .sort-icon { opacity:1; }
 `;
+
+// ── Sonarr/Radarr-style helpers ───────────────────────────────────────────────
+
+function cleanTitle(title) {
+  return title
+    .replace(/\s*:\s*.+$/, '')
+    .replace(/\s*-\s*Ein .+$/i, '')
+    .replace(/\s*-\s*[A-ZÄÖÜ][a-zäöü].{10,}$/, '')
+    .replace(/['"!?]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildSearchSuggestions(title, originalTitle, year) {
+  const chips = [];
+  const seen = new Set();
+  const add = (label, query, hint = '') => {
+    const q = query.trim();
+    if (!q || seen.has(q.toLowerCase())) return;
+    seen.add(q.toLowerCase());
+    chips.push({ label, query: q, hint });
+  };
+  const orig = originalTitle && originalTitle !== title ? originalTitle : null;
+  if (orig) {
+    add('Original', orig, 'Originaltitel — wird von Scene/P2P verwendet (empfohlen)');
+    if (year) add('Original + Jahr', `${orig} ${year}`, 'Mit Erscheinungsjahr zur Disambiguierung');
+    const origCleaned = cleanTitle(orig);
+    if (origCleaned !== orig) add('Original (kurz)', origCleaned, 'Originaltitel ohne Untertitel');
+  }
+  const cleaned = cleanTitle(title);
+  if (cleaned !== title && cleaned !== (orig || '')) add('Bereinigt', cleaned, 'Lokalisierter Titel ohne Untertitel');
+  add('Vollständig', title, 'Vollständiger lokalisierter Titel (selten in Releases)');
+  return chips;
+}
 
 function fmtSize(bytes) {
   if (!bytes) return '–';
@@ -86,7 +101,7 @@ function fmtSize(bytes) {
 
 function fmtAge(days) {
   if (days === null || days === undefined) return '–';
-  if (days < 1) return '< 1 day';
+  if (days < 1) return '< 1d';
   if (days < 30) return `${days}d`;
   if (days < 365) return `${Math.round(days / 30)}mo`;
   return `${(days / 365).toFixed(1)}y`;
@@ -123,10 +138,13 @@ function GrabBtn({ item }) {
   );
 }
 
-const SORT_FIELDS = ['agedays','size','score','peers'];
+export default function NzbSearchModal({ title, originalTitle, year, mediaType, onClose }) {
+  const bestDefault = originalTitle && originalTitle !== title ? originalTitle : cleanTitle(title);
+  const chips = buildSearchSuggestions(title, originalTitle, year);
+  const showHint = !!(originalTitle && originalTitle !== title);
 
-export default function NzbSearchModal({ title, mediaType, onClose }) {
-  const [query, setQuery] = useState(title || '');
+  const [query, setQuery] = useState(bestDefault);
+  const [activeChip, setActiveChip] = useState(0);
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -137,7 +155,6 @@ export default function NzbSearchModal({ title, mediaType, onClose }) {
   const [filterLang, setFilterLang] = useState('');
   const [customFormats, setCustomFormats] = useState([]);
 
-  // Load custom formats for scoring
   useEffect(() => {
     api.get('/settings/custom-formats').then(r => setCustomFormats(r.data.formats || [])).catch(() => {});
   }, []);
@@ -155,29 +172,35 @@ export default function NzbSearchModal({ title, mediaType, onClose }) {
         });
         if (matches) bonus += (cf.score || 0);
       }
-      return { ...item, score: (item.score || 0) + bonus, cfBonus: bonus };
+      return { ...item, score: (item.score || 0) + bonus };
     });
   }, [customFormats]);
 
-  const doSearch = async (e) => {
-    e?.preventDefault();
-    if (!query.trim()) return;
+  const doSearch = useCallback(async (q) => {
+    const term = (q !== undefined ? q : query).trim();
+    if (!term) return;
     setLoading(true); setError(null); setSearched(true);
     try {
       const cat = mediaType === 'movie' ? 'movie' : mediaType === 'series' ? 'tv' : undefined;
-      const res = await api.get('/search/nzb', { params: { q: query, ...(cat && { cat }) } });
+      const res = await api.get('/search/nzb', { params: { q: term, ...(cat && { cat }) } });
       setResults(applyCustomFormats(res.data.results || []));
     } catch (err) {
       setError(err.response?.data?.error || 'Search failed');
     } finally { setLoading(false); }
-  };
+  }, [query, mediaType, applyCustomFormats]);
 
-  useEffect(() => { if (title) doSearch(); }, []);
+  useEffect(() => { doSearch(bestDefault); }, []);
 
-  // Re-apply custom formats when they load
   useEffect(() => {
     if (results.length) setResults(prev => applyCustomFormats(prev));
   }, [customFormats]);
+
+  const selectChip = (idx) => {
+    setActiveChip(idx);
+    const q = chips[idx].query;
+    setQuery(q);
+    doSearch(q);
+  };
 
   const handleSort = (field) => {
     if (sortBy === field) setSortDir(d => d === 'desc' ? 'asc' : 'desc');
@@ -210,32 +233,68 @@ export default function NzbSearchModal({ title, mediaType, onClose }) {
       <style>{styles}</style>
       <div className="nzb-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
         <div className="nzb-modal">
+
           <div className="nzb-header">
             <div>
               <div className="nzb-title">Interactive Search — {title}</div>
-              <div className="nzb-subtitle">via Newznab / NZBHydra2{customFormats.length > 0 ? ` · ${customFormats.length} custom format${customFormats.length !== 1 ? 's' : ''} active` : ''}</div>
+              <div className="nzb-subtitle">
+                via Newznab / NZBHydra2
+                {customFormats.length > 0 ? ` · ${customFormats.length} Custom Format${customFormats.length !== 1 ? 's' : ''} aktiv` : ''}
+              </div>
             </div>
             <button className="nzb-close" onClick={onClose}><X size={18} /></button>
           </div>
 
+          {showHint && (
+            <div className="search-hint">
+              <Info size={13} />
+              <span>
+                Releases auf Usenet & Torrents nutzen fast immer den <span className="hint-orig">englischen Originaltitel</span>.
+                Automatisch gesucht nach <span className="hint-orig">„{originalTitle}"</span> statt dem deutschen Titel.
+                Bei 0 Ergebnissen bitte weitere Varianten unten ausprobieren.
+              </span>
+            </div>
+          )}
+
+          {chips.length > 1 && (
+            <div className="query-chips">
+              <span className="chips-label">Suchen als:</span>
+              {chips.map((chip, i) => (
+                <button
+                  key={chip.query}
+                  className={`chip${activeChip === i ? ' active' : ''}`}
+                  onClick={() => selectChip(i)}
+                  title={chip.hint}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="nzb-toolbar">
-            <input className="nzb-input" value={query} onChange={e => setQuery(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && doSearch()} placeholder="Search term..." />
-            <button className="nzb-search-btn" onClick={doSearch} disabled={loading || !query.trim()}>
-              <Search size={14} />{loading ? 'Searching...' : 'Search'}
+            <input
+              className="nzb-input"
+              value={query}
+              onChange={e => { setQuery(e.target.value); setActiveChip(-1); }}
+              onKeyDown={e => e.key === 'Enter' && doSearch()}
+              placeholder="Suchbegriff eingeben..."
+            />
+            <button className="nzb-search-btn" onClick={() => doSearch()} disabled={loading || !query.trim()}>
+              <Search size={14} />{loading ? 'Suche...' : 'Suchen'}
             </button>
             {results.length > 0 && (
               <div className="filter-group">
                 <Filter size={13} />
                 {qualities.length > 1 && (
                   <select className="filter-select" value={filterQuality} onChange={e => setFilterQuality(e.target.value)}>
-                    <option value="">All Quality</option>
+                    <option value="">Alle Qualitäten</option>
                     {qualities.map(q => <option key={q}>{q}</option>)}
                   </select>
                 )}
                 {langs.length > 1 && (
                   <select className="filter-select" value={filterLang} onChange={e => setFilterLang(e.target.value)}>
-                    <option value="">All Languages</option>
+                    <option value="">Alle Sprachen</option>
                     {langs.map(l => <option key={l}>{l}</option>)}
                   </select>
                 )}
@@ -244,22 +303,35 @@ export default function NzbSearchModal({ title, mediaType, onClose }) {
           </div>
 
           <div className="nzb-table-wrap">
-            {error && <div className="nzb-error"><AlertCircle size={16} />{error} — Configure an indexer in <a href="/settings" style={{color:'#6366f1'}}>Settings</a>.</div>}
-            {!searched && !loading && <div className="nzb-empty">Enter a search term to find releases</div>}
-            {loading && <div className="nzb-empty">Searching...</div>}
-            {searched && !loading && !error && displayed.length === 0 && <div className="nzb-empty">No results found for "{query}"</div>}
+            {error && (
+              <div className="nzb-error">
+                <AlertCircle size={16} />{error} — <a href="/settings" style={{color:'#6366f1'}}>Indexer konfigurieren</a>
+              </div>
+            )}
+            {!searched && !loading && <div className="nzb-empty">Suchbegriff eingeben um Releases zu finden</div>}
+            {loading && <div className="nzb-empty">Suche läuft...</div>}
+            {searched && !loading && !error && displayed.length === 0 && (
+              <div className="nzb-empty">
+                Keine Ergebnisse für „{query}"
+                {chips.length > 1 && (
+                  <div className="nzb-empty-tip">
+                    💡 Andere Variante über die Chips oben versuchen oder Suchbegriff manuell anpassen.
+                  </div>
+                )}
+              </div>
+            )}
             {displayed.length > 0 && (
               <table className="nzb-table">
                 <thead>
                   <tr>
-                    <th className="col-source">Source</th>
-                    <SortTh field="agedays" label="Age" className="col-age" />
-                    <th className="col-title">Title</th>
+                    <th className="col-source">Quelle</th>
+                    <SortTh field="agedays" label="Alter" className="col-age" />
+                    <th className="col-title">Release-Titel</th>
                     <th className="col-indexer">Indexer</th>
-                    <SortTh field="size" label="Size" className="col-size" />
+                    <SortTh field="size" label="Größe" className="col-size" />
                     <SortTh field="peers" label="Peers" className="col-peers" />
-                    <th className="col-lang">Language</th>
-                    <th className="col-quality">Quality</th>
+                    <th className="col-lang">Sprache</th>
+                    <th className="col-quality">Qualität</th>
                     <SortTh field="score" label="Score" className="col-score" />
                     <th className="col-action"></th>
                   </tr>
@@ -289,8 +361,12 @@ export default function NzbSearchModal({ title, mediaType, onClose }) {
           </div>
 
           <div className="nzb-footer">
-            <span>{displayed.length} result{displayed.length !== 1 ? 's' : ''}{results.length !== displayed.length ? ` (${results.length} total)` : ''}</span>
-            <span>Sort: {sortBy} {sortDir}</span>
+            <span>{displayed.length} Ergebnis{displayed.length !== 1 ? 'se' : ''}{results.length !== displayed.length ? ` (${results.length} gesamt)` : ''}</span>
+            <span style={{display:'flex',alignItems:'center',gap:'6px'}}>
+              <span>Aktive Suche:</span>
+              <span style={{color:'#6366f1',fontFamily:"'Space Mono',monospace",fontSize:'11px'}}>{query}</span>
+              · Sort: {sortBy} {sortDir}
+            </span>
           </div>
         </div>
       </div>

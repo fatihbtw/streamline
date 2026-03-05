@@ -162,4 +162,153 @@ router.post('/:id/episodes',
   }
 );
 
+// ── FILE INFO ─────────────────────────────────────────────────────────────────
+
+const fs = require('fs');
+const path = require('path');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+const execFileAsync = promisify(execFile);
+
+/**
+ * GET /api/media/:id/file-info
+ * Returns technical file metadata for the linked file path.
+ * Uses ffprobe if available, falls back to fs.stat only.
+ */
+router.get('/:id/file-info', param('id').isUUID(), async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  const db = getDB();
+  const item = db.prepare('SELECT id, path FROM media_items WHERE id = ?').get(req.params.id);
+  if (!item) return res.status(404).json({ error: 'Not found' });
+  if (!item.path) return res.json({ linked: false });
+
+  const filePath = item.path;
+
+  // Basic fs info
+  let stat;
+  try {
+    stat = fs.statSync(filePath);
+  } catch {
+    return res.json({ linked: true, path: filePath, accessible: false, error: 'Datei nicht gefunden oder kein Zugriff' });
+  }
+
+  const info = {
+    linked: true,
+    path: filePath,
+    filename: path.basename(filePath),
+    accessible: true,
+    size_bytes: stat.size,
+    modified_at: stat.mtime.toISOString(),
+  };
+
+  // Try ffprobe for rich metadata
+  try {
+    const { stdout } = await execFileAsync('ffprobe', [
+      '-v', 'quiet',
+      '-print_format', 'json',
+      '-show_streams',
+      '-show_format',
+      filePath,
+    ], { timeout: 10000 });
+
+    const probe = JSON.parse(stdout);
+    const fmt = probe.format || {};
+    const videoStream = (probe.streams || []).find(s => s.codec_type === 'video');
+    const audioStreams = (probe.streams || []).filter(s => s.codec_type === 'audio');
+
+    info.duration_seconds = fmt.duration ? parseFloat(fmt.duration) : null;
+    info.bitrate_kbps = fmt.bit_rate ? Math.round(parseInt(fmt.bit_rate) / 1000) : null;
+    info.format_name = fmt.format_long_name || fmt.format_name || null;
+
+    if (videoStream) {
+      info.video = {
+        codec: videoStream.codec_name?.toUpperCase() || null,
+        codec_long: videoStream.codec_long_name || null,
+        width: videoStream.width || null,
+        height: videoStream.height || null,
+        resolution: videoStream.width && videoStream.height
+          ? `${videoStream.width}×${videoStream.height}` : null,
+        fps: videoStream.r_frame_rate
+          ? (() => { const [n, d] = videoStream.r_frame_rate.split('/'); return d ? Math.round((parseInt(n) / parseInt(d)) * 100) / 100 : null; })()
+          : null,
+        hdr: (videoStream.color_transfer || '').toLowerCase().includes('smpte2084') ||
+             (videoStream.color_space || '').toLowerCase().includes('bt2020'),
+        bit_depth: videoStream.bits_per_raw_sample ? parseInt(videoStream.bits_per_raw_sample) : null,
+        profile: videoStream.profile || null,
+      };
+      // Derive quality label
+      const h = videoStream.height || 0;
+      if (h >= 2160) info.quality_detected = '2160p (4K)';
+      else if (h >= 1080) info.quality_detected = '1080p';
+      else if (h >= 720) info.quality_detected = '720p';
+      else if (h > 0) info.quality_detected = `${h}p`;
+    }
+
+    if (audioStreams.length) {
+      info.audio = audioStreams.map(a => ({
+        codec: a.codec_name?.toUpperCase() || null,
+        channels: a.channels || null,
+        channel_layout: a.channel_layout || null,
+        language: a.tags?.language || null,
+        title: a.tags?.title || null,
+      }));
+    }
+  } catch (_) {
+    // ffprobe not available or failed — return what we have
+    info.ffprobe_available = false;
+  }
+
+  res.json(info);
+});
+
+/**
+ * POST /api/media/:id/link-file
+ * Body: { path: string }
+ * Links a file to this media item, sets status to 'downloaded'.
+ */
+router.post('/:id/link-file',
+  param('id').isUUID(),
+  body('path').trim().isLength({ min: 1, max: 1000 }),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const db = getDB();
+    const item = db.prepare('SELECT id, title FROM media_items WHERE id = ?').get(req.params.id);
+    if (!item) return res.status(404).json({ error: 'Not found' });
+
+    const filePath = req.body.path;
+
+    // Check file exists
+    if (!fs.existsSync(filePath)) {
+      return res.status(400).json({ error: `Datei nicht gefunden: ${filePath}` });
+    }
+
+    db.prepare(`UPDATE media_items SET path = ?, status = 'downloaded', updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .run(filePath, req.params.id);
+
+    logger.info('File linked to media item', { id: req.params.id, title: item.title, path: filePath, user: req.user.username });
+    res.json({ success: true, message: 'Datei verknüpft' });
+  }
+);
+
+/**
+ * DELETE /api/media/:id/unlink-file
+ * Removes the file link (sets path = NULL), resets status to 'wanted'.
+ */
+router.delete('/:id/unlink-file', param('id').isUUID(), (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  const db = getDB();
+  const result = db.prepare(`UPDATE media_items SET path = NULL, status = 'wanted', updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+    .run(req.params.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
+
+  logger.info('File unlinked from media item', { id: req.params.id, user: req.user.username });
+  res.json({ success: true });
+});
+
 module.exports = router;

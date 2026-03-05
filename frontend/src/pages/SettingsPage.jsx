@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Save, Plus, Trash2, TestTube, CheckCircle, XCircle, Eye, EyeOff } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Save, Plus, Trash2, TestTube, CheckCircle, XCircle, Eye, EyeOff, Download, Upload, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 
@@ -37,6 +37,13 @@ const styles = `
   .provider-card-label { font-size: 14px; font-weight: 600; color: #e8e8f0; margin-bottom: 2px; }
   .provider-card.active .provider-card-label { color: #6366f1; }
   .provider-card-sub { font-size: 12px; color: #6b7280; }
+  .backup-note { font-size: 12px; color: #6b7280; background: rgba(99,102,241,0.07); border: 1px solid rgba(99,102,241,0.2); border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; display: flex; align-items: flex-start; gap: 8px; line-height: 1.5; }
+  .backup-note svg { flex-shrink: 0; margin-top: 1px; color: #6366f1; }
+  .btn-backup { padding: 10px 20px; background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 8px; color: #e8e8f0; font-weight: 500; cursor: pointer; font-family: 'DM Sans', sans-serif; display: flex; align-items: center; gap: 6px; font-size: 14px; }
+  .btn-backup:hover { border-color: #6366f1; color: #6366f1; }
+  .btn-restore { padding: 10px 20px; background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 8px; color: #e8e8f0; font-weight: 500; cursor: pointer; font-family: 'DM Sans', sans-serif; display: flex; align-items: center; gap: 6px; font-size: 14px; }
+  .btn-restore:hover { border-color: #10b981; color: #10b981; }
+  .restore-warning { font-size: 12px; color: #f59e0b; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); border-radius: 8px; padding: 10px 14px; margin-top: 12px; }
   @media (max-width: 640px) { .form-row { grid-template-columns: 1fr; } .provider-toggle { grid-template-columns: 1fr; } }
 `;
 
@@ -152,6 +159,9 @@ export default function SettingsPage() {
   const [hydraTest, setHydraTest] = useState(null);
   const [showAddIndexer, setShowAddIndexer] = useState(false);
   const [newIndexer, setNewIndexer] = useState({ name: '', type: 'newznab', url: '', api_key: '' });
+  const [restoring, setRestoring] = useState(false);
+  const [restoreResult, setRestoreResult] = useState(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     api.get('/settings').then(r => {
@@ -195,6 +205,52 @@ export default function SettingsPage() {
       setNewIndexer({ name: '', type: 'newznab', url: '', api_key: '' });
       toast.success('Indexer added');
     } catch { toast.error('Failed to add indexer'); }
+  };
+
+  const downloadBackup = async () => {
+    try {
+      const res = await api.get('/settings/backup', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/json' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `streamline-backup-${new Date().toISOString().slice(0,10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Backup heruntergeladen');
+    } catch {
+      toast.error('Backup fehlgeschlagen');
+    }
+  };
+
+  const handleRestoreFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setRestoring(true);
+    setRestoreResult(null);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const res = await api.post('/settings/restore', data);
+      setRestoreResult({ ok: true, msg: res.data.message });
+      toast.success('Einstellungen wiederhergestellt');
+      // Reload settings from server
+      const s = (await api.get('/settings')).data;
+      if (s.sabnzbd_url) setSabUrl(s.sabnzbd_url);
+      if (s.hydra2_url) setHydraUrl(s.hydra2_url);
+      if (s.download_path_movies) setMoviesPath(s.download_path_movies);
+      if (s.download_path_series) setSeriesPath(s.download_path_series);
+      const idxRes = await api.get('/settings/indexers');
+      setIndexers(idxRes.data);
+    } catch (err) {
+      const msg = err.response?.data?.error || 'Ungültige Backup-Datei';
+      setRestoreResult({ ok: false, msg });
+      toast.error('Wiederherstellen fehlgeschlagen');
+    } finally {
+      setRestoring(false);
+    }
   };
 
   const deleteIndexer = async (id) => {
@@ -342,6 +398,44 @@ export default function SettingsPage() {
               <Plus size={14} /> Add Indexer
             </button>
           )}
+        </div>
+
+        {/* Backup & Restore */}
+        <div className="settings-card">
+          <div className="card-title">💾 Backup & Wiederherstellen</div>
+          <div className="backup-note">
+            <AlertCircle size={14} />
+            <span>
+              Das Backup enthält alle Einstellungen, Indexer und Custom Formats —
+              <strong> aber keine API-Keys</strong> (aus Sicherheitsgründen).
+              API-Keys müssen nach einer Wiederherstellung neu eingegeben werden.
+            </span>
+          </div>
+          <div className="btn-row">
+            <button className="btn-backup" onClick={downloadBackup}>
+              <Download size={14} /> Backup herunterladen
+            </button>
+            <button className="btn-restore" onClick={() => fileInputRef.current?.click()} disabled={restoring}>
+              <Upload size={14} /> {restoring ? 'Lädt...' : 'Backup einspielen'}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              style={{ display: 'none' }}
+              onChange={handleRestoreFile}
+            />
+          </div>
+          {restoreResult && (
+            <div className={`test-result ${restoreResult.ok ? 'test-ok' : 'test-fail'}`} style={{marginTop:'12px'}}>
+              {restoreResult.ok ? <CheckCircle size={14} /> : <XCircle size={14} />}
+              {restoreResult.msg}
+            </div>
+          )}
+          <div className="restore-warning">
+            ⚠️ Das Einspielen eines Backups überschreibt bestehende Indexer und Custom Formats.
+            Nicht enthaltene Einstellungen bleiben unverändert.
+          </div>
         </div>
 
       </div>

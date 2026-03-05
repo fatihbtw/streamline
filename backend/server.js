@@ -10,6 +10,9 @@ const mediaRouter = require('./routes/media');
 const settingsRouter = require('./routes/settings');
 const searchRouter = require('./routes/search');
 const downloadRouter = require('./routes/downloads');
+const discoverRouter = require('./routes/discover');
+const monitorRouter = require('./routes/monitor');
+const { startMonitor } = require('./monitor');
 const { authenticateToken } = require('./middleware/auth');
 
 const app = express();
@@ -89,6 +92,8 @@ app.use('/api/media', authenticateToken, mediaRouter);
 app.use('/api/settings', authenticateToken, settingsRouter);
 app.use('/api/search', authenticateToken, searchRouter);
 app.use('/api/downloads', authenticateToken, downloadRouter);
+app.use('/api/discover', authenticateToken, discoverRouter);
+app.use('/api/monitor', authenticateToken, monitorRouter);
 
 // Health check (no auth)
 app.get('/api/health', (req, res) => {
@@ -194,6 +199,7 @@ app.use((err, req, res, next) => {
 async function start() {
   await initDB();
   app.listen(PORT, '0.0.0.0', () => {
+    startMonitor();
     logger.info('Streamline backend running on port ' + PORT);
   });
 }

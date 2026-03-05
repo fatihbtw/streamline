@@ -1,250 +1,344 @@
 const express = require('express');
-const { body, validationResult } = require('express-validator');
+const { body, param, validationResult } = require('express-validator');
 const { v4: uuidv4 } = require('uuid');
+const axios = require('axios');
 const { getDB } = require('../db');
-const { requireAdmin } = require('../middleware/auth');
 const logger = require('../logger');
+const { requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
-// GET /api/settings
+// ── GET /api/settings ─────────────────────────────────────────────────────────
 router.get('/', requireAdmin, (req, res) => {
   const db = getDB();
-  const rows = db.prepare('SELECT key, value, updated_at FROM settings').all();
+  const rows = db.prepare('SELECT key, value FROM settings').all();
   const settings = {};
-  for (const row of rows) {
-    // Never expose sensitive keys in plaintext
-    if (row.key.includes('api_key') || row.key.includes('password')) {
-      settings[row.key] = row.value ? '***CONFIGURED***' : '';
+  for (const { key, value } of rows) {
+    // Don't expose raw API keys in listing - mask them
+    if (['sabnzbd_api_key', 'tmdb_api_key', 'plex_token', 'jellyfin_api_key',
+         'pushover_api_token', 'qbittorrent_password'].includes(key)) {
+      settings[key] = value ? '••••••••' : '';
+      settings[`${key}_set`] = !!value;
     } else {
-      settings[row.key] = row.value;
+      settings[key] = value;
     }
   }
   res.json(settings);
 });
 
-// PUT /api/settings — update settings (admin only)
-router.put('/',
-  requireAdmin,
-  body('key').trim().isLength({ min: 1, max: 100 }).matches(/^[a-z0-9_]+$/),
-  body('value').isString().isLength({ max: 2000 }),
+// ── PATCH /api/settings — update one or more settings ────────────────────────
+router.patch('/', requireAdmin,
+  body('key').optional().isString(),
+  body('value').optional(),
   (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
     const db = getDB();
-    const { key, value } = req.body;
-
-    // Whitelist allowed setting keys
     const allowed = [
-      'tmdb_api_key', 'download_path_movies', 'download_path_series',
-      'quality_profiles', 'sabnzbd_url', 'sabnzbd_api_key',
-      'hydra2_url', 'hydra2_api_key',
+      'tmdb_api_key', 'sabnzbd_url', 'sabnzbd_api_key',
+      'download_path_movies', 'download_path_series',
+      'monitor_interval_minutes', 'monitor_enabled',
+      'quality_upgrade_enabled', 'quality_upgrade_cutoff',
+      'failed_retry_count', 'failed_retry_delay_hours',
+      'plex_url', 'plex_token',
+      'jellyfin_url', 'jellyfin_api_key',
+      'webhook_url', 'pushover_user_key', 'pushover_api_token',
+      'qbittorrent_url', 'qbittorrent_username', 'qbittorrent_password',
+      'allowed_origins',
     ];
-    if (!allowed.includes(key)) {
-      return res.status(400).json({ error: 'Unknown setting key' });
+    const update = db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)");
+
+    // Support both {key,value} and bulk {key1:val1, key2:val2}
+    if (req.body.key && req.body.value !== undefined) {
+      if (!allowed.includes(req.body.key)) return res.status(400).json({ error: 'Unknown setting key' });
+      update.run(req.body.key, String(req.body.value));
+    } else {
+      for (const [k, v] of Object.entries(req.body)) {
+        if (allowed.includes(k)) update.run(k, String(v));
+      }
     }
 
-    db.prepare('INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)').run(key, value);
-    logger.info('Setting updated', { key: key.replace(/api_key|password/, '[REDACTED]'), user: req.user.username });
-    res.json({ message: 'Setting saved' });
-  }
-);
-
-// GET /api/settings/indexers
-router.get('/indexers', requireAdmin, (req, res) => {
-  const db = getDB();
-  const indexers = db.prepare('SELECT id, name, type, url, enabled, priority, added_at FROM indexers').all();
-  res.json(indexers);
-});
-
-// POST /api/settings/indexers
-router.post('/indexers',
-  requireAdmin,
-  body('name').trim().isLength({ min: 1, max: 100 }),
-  body('type').isIn(['newznab', 'torznab', 'torrent_api']),
-  body('url').isURL({ protocols: ['http', 'https'] }),
-  body('api_key').optional().isLength({ max: 256 }),
-  (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
-    const db = getDB();
-    const { name, type, url, api_key, priority = 1 } = req.body;
-    const id = uuidv4();
-
-    db.prepare('INSERT INTO indexers (id, name, type, url, api_key, priority) VALUES (?, ?, ?, ?, ?, ?)').run(
-      id, name, type, url, api_key || null, priority
-    );
-    logger.info('Indexer added', { name, type, user: req.user.username });
-    res.status(201).json({ id, message: 'Indexer added' });
-  }
-);
-
-// DELETE /api/settings/indexers/:id
-router.delete('/indexers/:id', requireAdmin, (req, res) => {
-  const db = getDB();
-  const result = db.prepare('DELETE FROM indexers WHERE id = ?').run(req.params.id);
-  if (result.changes === 0) return res.status(404).json({ error: 'Indexer not found' });
-  res.json({ message: 'Indexer removed' });
-});
-
-// POST /api/settings/test-connection — test sabnzbd or hydra2
-router.post('/test-connection',
-  requireAdmin,
-  body('type').isIn(['sabnzbd', 'hydra2']),
-  body('url').isURL({ protocols: ['http', 'https'] }),
-  body('api_key').isLength({ min: 1, max: 256 }),
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
-    const axios = require('axios');
-    const { type, url, api_key } = req.body;
-
-    try {
-      let testUrl;
-      if (type === 'sabnzbd') {
-        testUrl = `${url}/api?mode=version&apikey=${api_key}&output=json`;
-      } else {
-        testUrl = `${url}/api?apikey=${api_key}&t=caps&o=json`;
-      }
-
-      const resp = await axios.get(testUrl, {
-        timeout: 5000,
-        maxRedirects: 3,
-        validateStatus: s => s < 500,
-      });
-
-      if (resp.status === 200) {
-        res.json({ success: true, message: 'Connection successful' });
-      } else {
-        res.status(400).json({ success: false, message: `Received status ${resp.status}` });
-      }
-    } catch (err) {
-      res.status(400).json({ success: false, message: 'Connection failed: ' + err.message });
-    }
-  }
-);
-
-
-
-
-// GET /api/settings/meta-provider
-router.get('/meta-provider', requireAdmin, (req, res) => {
-  const db = getDB();
-  const provider = db.prepare("SELECT value FROM settings WHERE key = 'meta_provider'").get()?.value || 'tmdb';
-  const tvdbKey = db.prepare("SELECT value FROM settings WHERE key = 'tvdb_api_key'").get()?.value || '';
-  const tmdbKey = db.prepare("SELECT value FROM settings WHERE key = 'tmdb_api_key'").get()?.value || '';
-  res.json({ provider, tvdb_api_key: tvdbKey, tmdb_api_key: tmdbKey });
-});
-
-// POST /api/settings/meta-provider
-router.post('/meta-provider', requireAdmin,
-  body('provider').isIn(['tmdb', 'tvdb']),
-  body('tmdb_api_key').optional().isString(),
-  body('tvdb_api_key').optional().isString(),
-  (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-    const db = getDB();
-    const { provider, tmdb_api_key, tvdb_api_key } = req.body;
-    db.prepare("INSERT OR REPLACE INTO settings (key,value) VALUES ('meta_provider',?)").run(provider);
-    if (tmdb_api_key !== undefined) db.prepare("INSERT OR REPLACE INTO settings (key,value) VALUES ('tmdb_api_key',?)").run(tmdb_api_key);
-    if (tvdb_api_key !== undefined) db.prepare("INSERT OR REPLACE INTO settings (key,value) VALUES ('tvdb_api_key',?)").run(tvdb_api_key);
+    logger.info('Settings updated', { user: req.user.username, keys: Object.keys(req.body) });
     res.json({ success: true });
   }
 );
 
-// ── CORS / Allowed Origins ────────────────────────────────────────────────────
-
-// GET /api/settings/cors
-router.get('/cors', requireAdmin, (req, res) => {
+// ── GET /api/settings/indexers ────────────────────────────────────────────────
+router.get('/indexers', requireAdmin, (req, res) => {
   const db = getDB();
-  const row = db.prepare("SELECT value FROM settings WHERE key = 'allowed_origins'").get();
-  const origins = row?.value ? row.value.split(',').map(o => o.trim()).filter(Boolean) : [];
-  res.json({ origins });
+  const indexers = db.prepare(`
+    SELECT i.id, i.name, i.type, i.url, i.enabled, i.priority,
+           i.categories, i.test_status, i.last_tested_at, i.supports_search,
+           i.added_at,
+           COALESCE(s.total_queries, 0) as total_queries,
+           COALESCE(s.successful_queries, 0) as successful_queries,
+           COALESCE(s.avg_response_ms, 0) as avg_response_ms,
+           s.last_queried_at
+    FROM indexers i
+    LEFT JOIN indexer_stats s ON s.indexer_id = i.id
+    ORDER BY i.priority DESC, i.added_at
+  `).all();
+  res.json(indexers);
 });
 
-// POST /api/settings/cors
-router.post('/cors', requireAdmin,
-  body('origins').isArray(),
+// ── POST /api/settings/indexers ───────────────────────────────────────────────
+router.post('/indexers', requireAdmin,
+  body('name').trim().isLength({ min: 1, max: 100 }),
+  body('type').isIn(['newznab', 'torznab', 'torrent_api']),
+  body('url').trim().isURL(),
+  body('api_key').optional().trim(),
+  body('priority').optional().isInt({ min: 1, max: 100 }),
+  body('categories').optional().trim(),
   (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
     const db = getDB();
-    const value = req.body.origins.map(o => o.trim()).filter(Boolean).join(',');
-    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('allowed_origins', ?)").run(value);
-    res.json({ success: true, origins: req.body.origins });
+    const { name, type, url, api_key = '', priority = 25, categories = '' } = req.body;
+    const id = uuidv4();
+
+    db.prepare(`
+      INSERT INTO indexers (id, name, type, url, api_key, priority, categories)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, name, type, url.replace(/\/$/, ''), api_key, priority, categories);
+
+    // Init stats row
+    db.prepare('INSERT OR IGNORE INTO indexer_stats (indexer_id) VALUES (?)').run(id);
+
+    logger.info('Indexer added', { name, type, user: req.user.username });
+    res.status(201).json({ id, message: 'Indexer hinzugefügt' });
   }
 );
 
-// ── Custom Formats ──────────────────────────────────────────────────────────
+// ── PATCH /api/settings/indexers/:id — update indexer ────────────────────────
+router.patch('/indexers/:id', requireAdmin,
+  param('id').isUUID(),
+  body('name').optional().trim().isLength({ min: 1, max: 100 }),
+  body('url').optional().trim().isURL(),
+  body('api_key').optional().trim(),
+  body('priority').optional().isInt({ min: 1, max: 100 }),
+  body('enabled').optional().isBoolean(),
+  body('categories').optional().trim(),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-// GET /api/settings/custom-formats
-router.get('/custom-formats', requireAdmin, (req, res) => {
+    const db = getDB();
+    const allowed = ['name', 'url', 'api_key', 'priority', 'enabled', 'categories'];
+    const updates = [];
+    const values = [];
+
+    for (const field of allowed) {
+      if (req.body[field] !== undefined) {
+        updates.push(`${field} = ?`);
+        values.push(field === 'enabled' ? (req.body[field] ? 1 : 0) : req.body[field]);
+      }
+    }
+    if (!updates.length) return res.status(400).json({ error: 'No fields to update' });
+
+    values.push(req.params.id);
+    const result = db.prepare(`UPDATE indexers SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    if (result.changes === 0) return res.status(404).json({ error: 'Indexer not found' });
+
+    res.json({ success: true });
+  }
+);
+
+// ── DELETE /api/settings/indexers/:id ────────────────────────────────────────
+router.delete('/indexers/:id', requireAdmin, param('id').isUUID(), (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   const db = getDB();
-  const raw = db.prepare("SELECT value FROM settings WHERE key = 'custom_formats'").get()?.value;
-  res.json({ formats: raw ? JSON.parse(raw) : [] });
+  const result = db.prepare('DELETE FROM indexers WHERE id = ?').run(req.params.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'Indexer not found' });
+  res.json({ success: true });
 });
 
-// POST /api/settings/custom-formats
+// ── POST /api/settings/indexers/:id/test ─────────────────────────────────────
+router.post('/indexers/:id/test', requireAdmin, param('id').isUUID(), async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  const db = getDB();
+  const indexer = db.prepare('SELECT * FROM indexers WHERE id = ?').get(req.params.id);
+  if (!indexer) return res.status(404).json({ error: 'Indexer not found' });
+
+  const startTime = Date.now();
+  try {
+    const response = await axios.get(`${indexer.url}/api`, {
+      params: { t: 'caps', apikey: indexer.api_key || '', output: 'json' },
+      timeout: 8000,
+    });
+    const elapsed = Date.now() - startTime;
+
+    db.prepare(`
+      UPDATE indexers SET test_status = 'ok', last_tested_at = CURRENT_TIMESTAMP WHERE id = ?
+    `).run(indexer.id);
+
+    res.json({
+      success: true,
+      message: `Verbindung erfolgreich (${elapsed}ms)`,
+      response_ms: elapsed,
+      caps: response.data?.caps || null,
+    });
+  } catch (err) {
+    db.prepare(`
+      UPDATE indexers SET test_status = 'failed', last_tested_at = CURRENT_TIMESTAMP WHERE id = ?
+    `).run(indexer.id);
+
+    const status = err.response?.status || 0;
+    res.status(400).json({
+      success: false,
+      message: `Verbindung fehlgeschlagen: ${err.message}`,
+      http_status: status,
+    });
+  }
+});
+
+// ── POST /api/settings/test-connection ───────────────────────────────────────
+router.post('/test-connection', requireAdmin,
+  body('type').isIn(['sabnzbd', 'qbittorrent', 'plex', 'jellyfin']),
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const db = getDB();
+    const { type } = req.body;
+
+    try {
+      if (type === 'sabnzbd') {
+        const url = req.body.url || db.prepare("SELECT value FROM settings WHERE key = 'sabnzbd_url'").get()?.value;
+        const key = req.body.api_key || db.prepare("SELECT value FROM settings WHERE key = 'sabnzbd_api_key'").get()?.value;
+        if (!url || !key) return res.status(400).json({ error: 'URL and API key required' });
+        const r = await axios.get(`${url}/api`, { params: { mode: 'version', apikey: key, output: 'json' }, timeout: 6000 });
+        res.json({ success: true, message: `SABnzbd v${r.data?.version || '?'} — Verbindung OK` });
+
+      } else if (type === 'qbittorrent') {
+        const url = req.body.url || db.prepare("SELECT value FROM settings WHERE key = 'qbittorrent_url'").get()?.value;
+        if (!url) return res.status(400).json({ error: 'URL required' });
+        const r = await axios.get(`${url}/api/v2/app/version`, { timeout: 6000 });
+        res.json({ success: true, message: `qBittorrent v${r.data || '?'} — Verbindung OK` });
+
+      } else if (type === 'plex') {
+        const url = req.body.url || db.prepare("SELECT value FROM settings WHERE key = 'plex_url'").get()?.value;
+        const token = req.body.token || db.prepare("SELECT value FROM settings WHERE key = 'plex_token'").get()?.value;
+        if (!url) return res.status(400).json({ error: 'URL required' });
+        await axios.get(`${url}/identity`, {
+          headers: token ? { 'X-Plex-Token': token } : {},
+          timeout: 6000,
+        });
+        res.json({ success: true, message: 'Plex — Verbindung OK' });
+
+      } else if (type === 'jellyfin') {
+        const url = req.body.url || db.prepare("SELECT value FROM settings WHERE key = 'jellyfin_url'").get()?.value;
+        if (!url) return res.status(400).json({ error: 'URL required' });
+        const r = await axios.get(`${url}/System/Info/Public`, { timeout: 6000 });
+        res.json({ success: true, message: `Jellyfin ${r.data?.Version || ''} — Verbindung OK` });
+      }
+    } catch (err) {
+      res.status(400).json({ success: false, message: `Verbindungsfehler: ${err.message}` });
+    }
+  }
+);
+
+// ── GET /api/settings/meta-provider ──────────────────────────────────────────
+router.get('/meta-provider', requireAdmin, (req, res) => {
+  const db = getDB();
+  const key = db.prepare("SELECT value FROM settings WHERE key = 'tmdb_api_key'").get();
+  res.json({ provider: 'tmdb', configured: !!(key?.value) });
+});
+
+// ── GET /api/settings/custom-formats ─────────────────────────────────────────
+router.get('/custom-formats', requireAdmin, (req, res) => {
+  const db = getDB();
+  const raw = db.prepare("SELECT value FROM settings WHERE key = 'custom_formats'").get();
+  res.json(raw ? JSON.parse(raw.value) : []);
+});
+
+// ── POST /api/settings/custom-formats ────────────────────────────────────────
 router.post('/custom-formats', requireAdmin,
   body('formats').isArray(),
   (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
     const db = getDB();
     db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('custom_formats', ?)").run(JSON.stringify(req.body.formats));
     res.json({ success: true });
   }
 );
 
-// POST /api/settings/import-custom-formats — import from Radarr/Sonarr JSON export
-router.post('/import-custom-formats', requireAdmin, async (req, res) => {
-  try {
-    const { source, data } = req.body; // source: 'radarr' | 'sonarr', data: parsed JSON array
-    if (!Array.isArray(data)) return res.status(400).json({ error: 'Expected array' });
+// ── GET /api/settings/backup ──────────────────────────────────────────────────
+router.get('/backup', requireAdmin, (req, res) => {
+  const db = getDB();
+  const settings = db.prepare('SELECT key, value FROM settings').all();
+  const indexers = db.prepare('SELECT id, name, type, url, enabled, priority, categories FROM indexers').all();
+  const customFormats = db.prepare("SELECT value FROM settings WHERE key = 'custom_formats'").get();
 
-    // Normalize Radarr/Sonarr custom format structure to Streamline format
-    const formats = data.map(cf => ({
-      id: cf.id || Math.random().toString(36).slice(2),
-      name: cf.name,
-      score: cf.score || 0,
-      conditions: (cf.specifications || cf.formatTags || []).map(spec => {
-        // fields can be array or object depending on Radarr/Sonarr version
-        let value = spec.value || '';
-        if (!value && spec.fields) {
-          if (Array.isArray(spec.fields)) {
-            value = spec.fields.find(f => f.name === 'value')?.value || '';
-          } else if (typeof spec.fields === 'object') {
-            value = spec.fields.value || Object.values(spec.fields)[0] || '';
-          }
-        }
-        return {
-          type: spec.implementationName || spec.tagType || spec.type || 'unknown',
-          value: String(value),
-          negate: spec.negate || false,
-        };
-      }),
-    }));
+  res.json({
+    version: '2.0',
+    exported_at: new Date().toISOString(),
+    settings: Object.fromEntries(settings.map(s => [s.key, s.value])),
+    indexers,
+    custom_formats: customFormats ? JSON.parse(customFormats.value) : [],
+  });
+});
 
+// ── POST /api/settings/restore ────────────────────────────────────────────────
+router.post('/restore', requireAdmin,
+  body('settings').optional().isObject(),
+  body('indexers').optional().isArray(),
+  async (req, res) => {
     const db = getDB();
-    // Merge with existing
-    const existing = JSON.parse(db.prepare("SELECT value FROM settings WHERE key = 'custom_formats'").get()?.value || '[]');
-    const merged = [...existing];
-    for (const f of formats) {
-      const idx = merged.findIndex(e => e.name === f.name);
-      if (idx >= 0) merged[idx] = f; else merged.push(f);
+    const backup = req.body;
+    let restoredSettings = 0, restoredIndexers = 0;
+
+    const sensitiveKeys = new Set(['password_hash', 'jwt_secret']);
+    const allowedKeys = [
+      'tmdb_api_key', 'sabnzbd_url', 'sabnzbd_api_key',
+      'download_path_movies', 'download_path_series',
+      'monitor_interval_minutes', 'monitor_enabled', 'quality_upgrade_enabled',
+      'quality_upgrade_cutoff', 'failed_retry_count', 'failed_retry_delay_hours',
+      'plex_url', 'plex_token', 'jellyfin_url', 'jellyfin_api_key',
+      'webhook_url', 'pushover_user_key', 'pushover_api_token',
+      'qbittorrent_url', 'qbittorrent_username', 'qbittorrent_password',
+      'allowed_origins', 'custom_formats',
+    ];
+
+    if (backup.settings) {
+      const update = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+      for (const [k, v] of Object.entries(backup.settings)) {
+        if (allowedKeys.includes(k) && !sensitiveKeys.has(k)) {
+          update.run(k, String(v));
+          restoredSettings++;
+        }
+      }
     }
-    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('custom_formats', ?)").run(JSON.stringify(merged));
-    logger.info('Custom formats imported', { count: formats.length, source });
-    res.json({ success: true, imported: formats.length, total: merged.length });
-  } catch (err) {
-    logger.error('Custom format import failed', { error: err.message });
-    res.status(500).json({ error: 'Import failed: ' + err.message });
+
+    if (Array.isArray(backup.indexers)) {
+      db.prepare('DELETE FROM indexers').run();
+      const stmt = db.prepare('INSERT OR IGNORE INTO indexers (id, name, type, url, enabled, priority, categories) VALUES (?, ?, ?, ?, ?, ?, ?)');
+      for (const idx of backup.indexers) {
+        stmt.run(idx.id || uuidv4(), idx.name, idx.type, idx.url, idx.enabled ? 1 : 0, idx.priority || 25, idx.categories || '');
+        restoredIndexers++;
+      }
+    }
+
+    logger.info('Settings restored', { user: req.user.username, settings: restoredSettings, indexers: restoredIndexers });
+    res.json({ success: true, message: `${restoredSettings} Einstellungen, ${restoredIndexers} Indexer wiederhergestellt` });
   }
+);
+
+// ── GET /api/settings/cors ────────────────────────────────────────────────────
+router.get('/cors', requireAdmin, (req, res) => {
+  const db = getDB();
+  const row = db.prepare("SELECT value FROM settings WHERE key = 'allowed_origins'").get();
+  res.json({ origins: row?.value ? row.value.split(',').map(o => o.trim()) : [] });
+});
+
+router.post('/cors', requireAdmin, body('origins').isArray(), (req, res) => {
+  const db = getDB();
+  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('allowed_origins', ?)").run(req.body.origins.join(','));
+  res.json({ success: true });
 });
 
 module.exports = router;
-

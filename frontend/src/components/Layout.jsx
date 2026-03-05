@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Search, Download, Settings, LogOut, Menu, X, Activity, Home, FolderOpen, Film, Sliders, Users } from 'lucide-react';
+import { Search, Download, Settings, LogOut, Menu, X, Activity, Home, FolderOpen, Film, Sliders, Users, Compass, Radio, BarChart2 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 
 const NAV = [
   { to: '/', icon: Home, label: 'Dashboard', exact: true },
   { to: '/library', icon: Film, label: 'Library' },
+  { to: '/discover', icon: Compass, label: 'Entdecken' },
   { to: '/search', icon: Search, label: 'Search' },
   { to: '/import', icon: FolderOpen, label: 'Import' },
   { to: '/downloads', icon: Download, label: 'Downloads' },
+  { to: '/activity', icon: Activity, label: 'Aktivität' },
+  { to: '/indexers', icon: Radio, label: 'Indexer' },
   { to: '/custom-formats', icon: Sliders, label: 'Custom Formats' },
   { to: '/users', icon: Users, label: 'Users' },
   { to: '/settings', icon: Settings, label: 'Settings' },

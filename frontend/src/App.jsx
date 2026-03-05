@@ -16,6 +16,9 @@ import ImportPage from './pages/ImportPage';
 import CustomFormatsPage from './pages/CustomFormatsPage';
 import UsersPage from './pages/UsersPage';
 import OnboardingPage from './pages/OnboardingPage';
+import DiscoverPage from './pages/DiscoverPage';
+import ActivityPage from './pages/ActivityPage';
+import IndexerSettingsPage from './pages/IndexerSettingsPage';
 
 function ProtectedRoute({ children }) {
   const token = useAuthStore(s => s.token);
@@ -86,12 +89,15 @@ export default function App() {
           <Route index element={<DashboardPage />} />
           <Route path="library" element={<LibraryPage />} />
           <Route path="library/:id" element={<MediaDetailPage />} />
+          <Route path="discover" element={<DiscoverPage />} />
           <Route path="search" element={<SearchPage />} />
           <Route path="downloads" element={<DownloadsPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="import" element={<ImportPage />} />
           <Route path="custom-formats" element={<CustomFormatsPage />} />
           <Route path="users" element={<UsersPage />} />
+          <Route path="activity" element={<ActivityPage />} />
+          <Route path="indexers" element={<IndexerSettingsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>

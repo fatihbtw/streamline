@@ -226,6 +226,7 @@ router.get('/tmdb/details/:type/:id', async (req, res) => {
       imdb_id: d.imdb_id || null,
       type,
       title: type === 'movie' ? d.title : d.name,
+      original_title: type === 'movie' ? (d.original_title || d.title) : (d.original_name || d.name),
       year: (type === 'movie' ? d.release_date : d.first_air_date)?.slice(0, 4),
       overview: d.overview,
       poster_url: d.poster_path ? `https://image.tmdb.org/t/p/w500${d.poster_path}` : null,
