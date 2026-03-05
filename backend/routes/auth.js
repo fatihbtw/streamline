@@ -44,8 +44,14 @@ router.post('/setup',
     );
     db.prepare("UPDATE settings SET value = 'true' WHERE key = 'setup_complete'").run();
 
+    const token = jwt.sign(
+      { id, username, role: 'admin' },
+      JWT_SECRET,
+      { algorithm: 'HS256', expiresIn: '24h', issuer: 'streamline' }
+    );
+
     logger.info('Admin user created during setup', { username });
-    res.status(201).json({ message: 'Admin account created. Please log in.' });
+    res.status(201).json({ token, user: { id, username, role: 'admin' } });
   }
 );
 

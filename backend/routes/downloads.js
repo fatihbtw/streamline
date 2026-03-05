@@ -66,8 +66,13 @@ router.get('/sabnzbd', async (req, res) => {
 });
 
 // POST /api/downloads/sabnzbd/action — pause/resume/delete
+// SABnzbd API reference:
+//   Global pause/resume: mode=pause / mode=resume
+//   Per-item pause:      mode=queue&name=pause&value=<nzo_id>
+//   Per-item resume:     mode=queue&name=resume&value=<nzo_id>
+//   Per-item delete:     mode=queue&name=delete&value=<nzo_id>&del_files=1
 router.post('/sabnzbd/action',
-  body('action').isIn(['pause', 'resume', 'delete']),
+  body('action').isIn(['pause', 'resume', 'delete', 'pause_all', 'resume_all']),
   body('nzo_id').optional().isString().isLength({ max: 100 }),
   async (req, res) => {
     const errors = validationResult(req);
@@ -78,23 +83,41 @@ router.post('/sabnzbd/action',
 
     const { action, nzo_id } = req.body;
 
-    const modeMap = { pause: 'pause', resume: 'resume', delete: 'queue' };
-    const params = { mode: modeMap[action], apikey: key, output: 'json' };
+    let params = { apikey: key, output: 'json' };
 
-    if (action === 'delete' && nzo_id) {
-      params.mode = 'queue';
-      params.name = 'delete';
-      params.id = nzo_id;
+    if (action === 'pause_all') {
+      // Pause entire queue globally
+      params.mode = 'pause';
+    } else if (action === 'resume_all') {
+      // Resume entire queue globally
+      params.mode = 'resume';
     } else if (nzo_id) {
-      params.name = action;
-      params.id = nzo_id;
+      // Per-item actions all use mode=queue with name= sub-command
+      params.mode = 'queue';
+      if (action === 'pause') {
+        params.name = 'pause';
+        params.value = nzo_id;
+      } else if (action === 'resume') {
+        params.name = 'resume';
+        params.value = nzo_id;
+      } else if (action === 'delete') {
+        params.name = 'delete';
+        params.value = nzo_id;
+        params.del_files = 1;
+      }
+    } else {
+      // No nzo_id — fall back to global pause/resume
+      params.mode = action === 'delete' ? 'queue' : action;
+      if (action === 'delete') params.name = 'delete';
     }
 
     try {
-      await axios.get(`${url}/api`, { params, timeout: 5000 });
-      res.json({ message: `Action '${action}' executed` });
+      const resp = await axios.get(`${url}/api`, { params, timeout: 5000 });
+      logger.info('SABnzbd action', { action, nzo_id, response: resp.data });
+      res.json({ message: `Action '${action}' executed`, sab_response: resp.data });
     } catch (err) {
-      res.status(502).json({ error: 'SABnzbd action failed' });
+      logger.error('SABnzbd action failed', { error: err.message, action, nzo_id });
+      res.status(502).json({ error: 'SABnzbd action failed: ' + err.message });
     }
   }
 );

@@ -52,9 +52,12 @@ export default function DownloadsPage() {
   const doAction = async (action, nzo_id) => {
     try {
       await api.post('/downloads/sabnzbd/action', { action, nzo_id });
-      toast.success(`Action "${action}" executed`);
-      fetchData();
-    } catch { toast.error('Action failed'); }
+      const labels = { pause: 'Paused', resume: 'Resumed', delete: 'Deleted', pause_all: 'Queue paused', resume_all: 'Queue resumed' };
+      toast.success(labels[action] || 'Done');
+      setTimeout(fetchData, 800); // small delay so SABnzbd has time to process
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Action failed');
+    }
   };
 
   return (
@@ -62,7 +65,11 @@ export default function DownloadsPage() {
       <style>{styles}</style>
       <div className="dl-header">
         <div className="dl-title">Downloads</div>
-        <button className="dl-refresh" onClick={fetchData}><RefreshCw size={14} /> Refresh</button>
+          <div style={{display:'flex',gap:'8px'}}>
+          <button className="dl-refresh" onClick={() => doAction('pause_all')} title="Pause all" style={{color:'#f59e0b'}}>⏸ Pause All</button>
+          <button className="dl-refresh" onClick={() => doAction('resume_all')} title="Resume all" style={{color:'#10b981'}}>▶ Resume All</button>
+          <button className="dl-refresh" onClick={fetchData}><RefreshCw size={14} /> Refresh</button>
+        </div>
       </div>
 
       <div className="section-title"><div className="live-dot" />SABnzbd — Live Queue</div>
