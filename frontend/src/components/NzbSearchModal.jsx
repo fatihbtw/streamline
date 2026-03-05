@@ -102,7 +102,7 @@ function NzbRow({ item }) {
             <span className="nzb-meta-item"><Clock size={11} />{fmtDate(item.pubDate)}</span>
           )}
           {item.indexer && (
-            <span className="nzb-meta-item" style={{background:'rgba(99,102,241,0.1)',padding:'1px 6px',borderRadius:'4px',color:'#6366f1'}}>{item.indexer}</span>
+            <span className="nzb-meta-item" style={{ background: 'rgba(99,102,241,0.1)', padding: '1px 6px', borderRadius: '4px', color: '#6366f1' }}>{item.indexer}</span>
           )}
         </div>
       </div>
@@ -173,11 +173,11 @@ export default function NzbSearchModal({ title, mediaType, onClose }) {
             {error && (
               <div className="nzb-error">
                 <AlertCircle size={16} />
-                {error} — Configure NZBHydra2 in <a href="/settings" style={{ color: '#6366f1' }}>Settings</a> in Settings.
+                {error} — Configure NZBHydra2 in <a href="/settings" style={{ color: '#6366f1' }}>Settings</a>.
               </div>
             )}
             {!error && !loading && searched && results.length === 0 && (
-              <div className="nzb-empty">No results for „{query}"</div>
+              <div className="nzb-empty">No results for "{query}"</div>
             )}
             {!searched && !loading && (
               <div className="nzb-empty">Starting search...</div>
@@ -187,7 +187,7 @@ export default function NzbSearchModal({ title, mediaType, onClose }) {
           </div>
 
           {results.length > 0 && (
-            <div className="nzb-footer">{results.length} result{results.length !== 1 ? 'se' : ''} found</div>
+            <div className="nzb-footer">{results.length} result{results.length !== 1 ? 's' : ''} found</div>
           )}
         </div>
       </div>
