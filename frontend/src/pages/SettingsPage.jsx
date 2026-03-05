@@ -43,6 +43,89 @@ function ApiKeyInput({ value, onChange, placeholder }) {
       <button type="button" className="pw-toggle" onClick={() => setShow(v => !v)}>
         {show ? <EyeOff size={15} /> : <Eye size={15} />}
       </button>
+
+    </div>
+  );
+}
+
+
+// CustomFormatsPanel moved to CustomFormatsPage
+function _CustomFormatsPanel() {
+  const [formats, setFormats] = useState([]);
+  const [importText, setImportText] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [source, setSource] = useState('radarr');
+
+  useEffect(() => {
+    api.get('/settings/custom-formats').then(r => setFormats(r.data.formats || [])).catch(() => {});
+  }, []);
+
+  const doImport = async () => {
+    if (!importText.trim()) { toast.error('Paste JSON first'); return; }
+    setImporting(true);
+    try {
+      let data = JSON.parse(importText);
+      if (!Array.isArray(data)) data = [data];
+      const res = await api.post('/settings/import-custom-formats', { source, data });
+      toast.success(`Imported ${res.data.imported} format(s)`);
+      setImportText('');
+      const updated = await api.get('/settings/custom-formats');
+      setFormats(updated.data.formats || []);
+    } catch (err) {
+      toast.error(err.message?.includes('JSON') ? 'Invalid JSON' : (err.response?.data?.error || 'Import failed'));
+    } finally { setImporting(false); }
+  };
+
+  const deleteFormat = async (name) => {
+    const updated = formats.filter(f => f.name !== name);
+    await api.post('/settings/custom-formats', { formats: updated });
+    setFormats(updated);
+    toast.success('Format removed');
+  };
+
+  return (
+    <div>
+      {formats.length > 0 && (
+        <div style={{marginBottom:'20px'}}>
+          <div style={{fontSize:'13px',fontWeight:'600',color:'#9ca3af',marginBottom:'10px'}}>Active Formats ({formats.length})</div>
+          <div style={{display:'flex',flexDirection:'column',gap:'6px'}}>
+            {formats.map(f => (
+              <div key={f.name} style={{display:'flex',alignItems:'center',gap:'10px',padding:'8px 12px',background:'#1a1a2e',borderRadius:'8px'}}>
+                <span style={{flex:1,fontSize:'13px',color:'#e8e8f0'}}>{f.name}</span>
+                <span style={{fontSize:'12px',padding:'2px 8px',borderRadius:'4px',background: f.score >= 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',color: f.score >= 0 ? '#10b981' : '#ef4444',fontFamily:'Space Mono,monospace'}}>
+                  {f.score > 0 ? '+' : ''}{f.score ?? 0}
+                </span>
+                <span style={{fontSize:'11px',color:'#4b5563'}}>{(f.conditions||[]).length} condition{(f.conditions||[]).length !== 1 ? 's' : ''}</span>
+                <button onClick={() => deleteFormat(f.name)} style={{background:'none',border:'none',color:'#6b7280',cursor:'pointer',padding:'2px'}} title="Remove">✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <div style={{fontSize:'13px',fontWeight:'600',color:'#9ca3af',marginBottom:'8px'}}>Import from Radarr / Sonarr</div>
+      <div style={{display:'flex',gap:'8px',marginBottom:'10px'}}>
+        {['radarr','sonarr'].map(s => (
+          <button key={s} type="button"
+            style={{padding:'6px 14px',border:'1px solid',borderColor: source===s ? '#6366f1' : '#2a2a4e',borderRadius:'6px',background: source===s ? 'rgba(99,102,241,0.1)' : '#1a1a2e',color: source===s ? '#6366f1' : '#6b7280',cursor:'pointer',fontSize:'12px',fontFamily:'DM Sans,sans-serif',fontWeight:'500',textTransform:'capitalize'}}
+            onClick={() => setSource(s)}>{s}
+          </button>
+        ))}
+      </div>
+      <div style={{fontSize:'12px',color:'#4b5563',marginBottom:'8px'}}>
+        In {source === 'radarr' ? 'Radarr' : 'Sonarr'}: Settings → Custom Formats → Export → paste here
+      </div>
+      <textarea
+        className="form-input"
+        style={{minHeight:'120px',resize:'vertical',fontFamily:'Space Mono,monospace',fontSize:'12px'}}
+        value={importText}
+        onChange={e => setImportText(e.target.value)}
+        placeholder={'[\n  { "name": "Remux", "score": 300, ... }\n]'}
+      />
+      <div style={{marginTop:'10px'}}>
+        <button className="btn-save" type="button" onClick={doImport} disabled={importing}>
+          {importing ? 'Importing...' : `Import ${source === 'radarr' ? 'Radarr' : 'Sonarr'} Formats`}
+        </button>
+      </div>
     </div>
   );
 }
@@ -55,11 +138,11 @@ export default function SettingsPage() {
   const [hydraKey, setHydraKey] = useState('');
   const [moviesPath, setMoviesPath] = useState('/downloads/movies');
   const [seriesPath, setSeriesPath] = useState('/downloads/series');
-  const [indexers, setIndexers] = useState([]);
+  const [indexers, setIndexerss] = useState([]);
   const [sabTest, setSabTest] = useState(null);
   const [hydraTest, setHydraTest] = useState(null);
   const [showAddIndexers, setShowAddIndexers] = useState(false);
-  const [newIndexer, setNewIndexer] = useState({ name: '', type: 'torznab', url: '', api_key: '' });
+  const [newIndexers, setNewIndexers] = useState({ name: '', type: 'torznab', url: '', api_key: '' });
 
   useEffect(() => {
     api.get('/settings').then(r => {
@@ -69,8 +152,8 @@ export default function SettingsPage() {
       if (s.hydra2_url) setHydraUrl(s.hydra2_url);
       if (s.download_path_movies) setMoviesPath(s.download_path_movies);
       if (s.download_path_series) setSeriesPath(s.download_path_series);
-    }).catch(() => { });
-    api.get('/settings/indexers').then(r => setIndexers(r.data)).catch(() => { });
+    }).catch(() => {});
+    api.get('/settings/indexers').then(r => setIndexerss(r.data)).catch(() => {});
   }, []);
 
   const saveSetting = async (key, value) => {
@@ -94,23 +177,23 @@ export default function SettingsPage() {
     }
   };
 
-  const addIndexer = async () => {
-    if (!newIndexer.name || !newIndexer.url) { toast.error('Name und URL erforderlich'); return; }
+  const addIndexers = async () => {
+    if (!newIndexers.name || !newIndexers.url) { toast.error('Name und URL erforderlich'); return; }
     try {
-      await api.post('/settings/indexers', newIndexer);
+      await api.post('/settings/indexers', newIndexers);
       const res = await api.get('/settings/indexers');
-      setIndexers(res.data);
+      setIndexerss(res.data);
       setShowAddIndexers(false);
-      setNewIndexer({ name: '', type: 'torznab', url: '', api_key: '' });
-      toast.success('Indexer hinzugefügt');
+      setNewIndexers({ name: '', type: 'torznab', url: '', api_key: '' });
+      toast.success('Indexers hinzugefügt');
     } catch { toast.error('Add fehlgeschlagen'); }
   };
 
-  const deleteIndexer = async (id) => {
+  const deleteIndexers = async (id) => {
     try {
       await api.delete(`/settings/indexers/${id}`);
-      setIndexers(prev => prev.filter(i => i.id !== id));
-      toast.success('Indexer entfernt');
+      setIndexerss(prev => prev.filter(i => i.id !== id));
+      toast.success('Indexers entfernt');
     } catch { toast.error('Fehler'); }
   };
 
@@ -195,7 +278,7 @@ export default function SettingsPage() {
 
         {/* Download Paths */}
         <div className="settings-card">
-          <div className="card-title">📁 Download Paths</div>
+          <div className="card-title">📁 Download Pathe</div>
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Movies</label>
@@ -213,30 +296,30 @@ export default function SettingsPage() {
 
         {/* Indexerss */}
         <div className="settings-card">
-          <div className="card-title">🌐 Torrent Indexers</div>
+          <div className="card-title">🌐 Torrent Indexerss</div>
           <div className="indexer-list">
-            {indexers.length === 0 && <div style={{ color: '#4b5563', fontSize: '14px' }}>Noch keine Indexer konfiguriert</div>}
+            {indexers.length === 0 && <div style={{ color: '#4b5563', fontSize: '14px' }}>Noch keine Indexers konfiguriert</div>}
             {indexers.map(idx => (
               <div key={idx.id} className="indexer-row">
                 <span className="indexer-name">{idx.name}</span>
                 <span className="indexer-type">{idx.type}</span>
                 <span className="indexer-url">{idx.url}</span>
-                <button className="del-btn" onClick={() => deleteIndexer(idx.id)}><Trash2 size={14} /></button>
+                <button className="del-btn" onClick={() => deleteIndexers(idx.id)}><Trash2 size={14} /></button>
               </div>
             ))}
           </div>
 
           {showAddIndexers ? (
             <div className="add-indexer-form">
-              <div className="add-indexer-title">Neuer Indexer</div>
+              <div className="add-indexer-title">Neuer Indexers</div>
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Name</label>
-                  <input className="form-input" value={newIndexer.name} onChange={e => setNewIndexer(p => ({ ...p, name: e.target.value }))} placeholder="z.B. NZBgeek" />
+                  <input className="form-input" value={newIndexers.name} onChange={e => setNewIndexers(p => ({ ...p, name: e.target.value }))} placeholder="z.B. NZBgeek" />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Type</label>
-                  <select className="form-input" value={newIndexer.type} onChange={e => setNewIndexer(p => ({ ...p, type: e.target.value }))}>
+                  <select className="form-input" value={newIndexers.type} onChange={e => setNewIndexers(p => ({ ...p, type: e.target.value }))}>
                     <option value="torznab">Torznab</option>
                     <option value="newznab">Newznab</option>
                     <option value="torrent_api">Torrent API</option>
@@ -246,21 +329,21 @@ export default function SettingsPage() {
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">URL</label>
-                  <input className="form-input" value={newIndexer.url} onChange={e => setNewIndexer(p => ({ ...p, url: e.target.value }))} placeholder="https://..." />
+                  <input className="form-input" value={newIndexers.url} onChange={e => setNewIndexers(p => ({ ...p, url: e.target.value }))} placeholder="https://..." />
                 </div>
                 <div className="form-group">
                   <label className="form-label">API Key</label>
-                  <input className="form-input" value={newIndexer.api_key} onChange={e => setNewIndexer(p => ({ ...p, api_key: e.target.value }))} placeholder="Optional" />
+                  <input className="form-input" value={newIndexers.api_key} onChange={e => setNewIndexers(p => ({ ...p, api_key: e.target.value }))} placeholder="Optional" />
                 </div>
               </div>
               <div className="btn-row">
-                <button className="btn-save" onClick={addIndexer}><Plus size={14} /> Add</button>
+                <button className="btn-save" onClick={addIndexers}><Plus size={14} /> Add</button>
                 <button className="btn-test" onClick={() => setShowAddIndexers(false)}>Abbrechen</button>
               </div>
             </div>
           ) : (
             <button className="btn-test" onClick={() => setShowAddIndexers(true)}>
-              <Plus size={14} /> Add Indexer
+              <Plus size={14} /> Add Indexers
             </button>
           )}
         </div>

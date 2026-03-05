@@ -9,6 +9,9 @@
 
 ## Screenshots
 
+> 📸 **Screenshots werden nach dem ersten Start hinzugefügt.**
+> Starte Streamline, mach Screenshots der folgenden Ansichten und lege sie in `docs/screenshots/` ab:
+
 | Dashboard | Mediathek |
 |---|---|
 | ![Dashboard](docs/screenshots/dashboard.png) | ![Bibliothek](docs/screenshots/library.png) |

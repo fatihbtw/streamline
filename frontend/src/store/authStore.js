@@ -6,11 +6,6 @@ const useAuthStore = create((set) => ({
   token: localStorage.getItem('mf_token'),
   isLoading: false,
 
-  setAuth: (token, user) => {
-    localStorage.setItem('mf_token', token);
-    set({ token, user });
-  },
-
   login: async (username, password) => {
     set({ isLoading: true });
     try {
@@ -28,6 +23,7 @@ const useAuthStore = create((set) => ({
   logout: () => {
     localStorage.removeItem('mf_token');
     set({ user: null, token: null });
+    window.location.href = '/login';
   },
 
   fetchMe: async () => {

@@ -116,21 +116,137 @@ router.get('/tmdb/details/:type/:id', async (req, res) => {
 });
 
 // Helper: parse Newznab XML/JSON response into unified list
+// Extract a named newznab:attr value from item
+function getAttr(item, name) {
+  const attrs = item['newznab:attr'] || item['attr'] || [];
+  const arr = Array.isArray(attrs) ? attrs : (attrs ? [attrs] : []);
+  const found = arr.find(a => {
+    const n = a?.['@attributes']?.name || a?.name;
+    return n === name;
+  });
+  return found?.['@attributes']?.value ?? found?.value ?? null;
+}
+
+// Detect quality from release title
+function detectQuality(title) {
+  const t = title.toLowerCase();
+  if (t.includes('remux')) return 'Remux';
+  if (t.includes('2160p') || t.includes('4k') || t.includes('uhd')) return '2160p';
+  if (t.includes('1080p')) return '1080p';
+  if (t.includes('720p')) return '720p';
+  if (t.includes('480p') || t.includes('dvdrip')) return '480p';
+  if (t.includes('bluray') || t.includes('blu-ray')) return 'BluRay';
+  if (t.includes('webrip') || t.includes('web-rip')) return 'WEBRip';
+  if (t.includes('webdl') || t.includes('web-dl') || t.includes('web.dl')) return 'WEB-DL';
+  if (t.includes('hdtv')) return 'HDTV';
+  return null;
+}
+
+// Detect language from release title
+function detectLanguage(title) {
+  const t = title.toLowerCase();
+  const langs = [
+    // German markers
+    ['german','German'], ['deutsch','German'], ['.de.','German'], ['.ger.','German'],
+    // Multi
+    ['multi','Multi'], ['ml.','Multi'], ['.ml.','Multi'],
+    // Dubbed
+    ['dubbed','Dubbed'], ['.dub.','Dubbed'],
+    // French
+    ['french','French'], ['.fr.','French'], ['.fra.','French'],
+    // Spanish
+    ['spanish','Spanish'], ['.es.','Spanish'], ['.spa.','Spanish'],
+    // Italian
+    ['italian','Italian'], ['.it.','Italian'], ['.ita.','Italian'],
+    // Dutch
+    ['dutch','Dutch'], ['.nl.','Dutch'],
+    // Korean
+    ['korean','Korean'], ['.ko.','Korean'],
+    // Japanese
+    ['japanese','Japanese'], ['.ja.','Japanese'],
+    // Chinese
+    ['chinese','Chinese'], ['.zh.','Chinese'],
+    // Turkish
+    ['turkish','Turkish'], ['.tr.','Turkish'],
+    // Atmos/Audio hints that imply English if no other lang found
+    ['english','English'], ['.en.','English'],
+  ];
+  for (const [key, label] of langs) {
+    if (t.includes(key)) return label;
+  }
+  // Default: if title has typical English scene tags, assume English
+  if (/\.(web-dl|webrip|bluray|hdtv|remux)\./i.test(title)) return 'English';
+  return null;
+}
+
+// Score a release (higher = better) — mimics Radarr/Sonarr scoring
+function scoreRelease(item) {
+  let score = 0;
+  const t = item.title.toLowerCase();
+  // Quality bonus
+  if (t.includes('remux')) score += 300;
+  else if (t.includes('1080p')) score += 200;
+  else if (t.includes('2160p') || t.includes('4k')) score += 150;
+  else if (t.includes('720p')) score += 100;
+  // Source bonus
+  if (t.includes('bluray') || t.includes('blu-ray')) score += 100;
+  else if (t.includes('web-dl') || t.includes('webdl')) score += 80;
+  else if (t.includes('webrip')) score += 60;
+  else if (t.includes('hdtv')) score += 40;
+  // Codec bonus
+  if (t.includes('x265') || t.includes('hevc') || t.includes('h265')) score += 30;
+  // Recency bonus (newer = better)
+  const age = item.agedays || 9999;
+  if (age < 7) score += 50;
+  else if (age < 30) score += 30;
+  else if (age < 180) score += 10;
+  return score;
+}
+
 function parseNewznabItems(data, indexerName) {
   let items = data?.channel?.item || data?.item || [];
   if (!Array.isArray(items)) items = items ? [items] : [];
   return items.map(item => {
-    const size = item.enclosure?.['@attributes']?.length
+    // Try all known size fields
+    const rawSize = item.enclosure?.['@attributes']?.length
       || item.enclosure?.length
       || item.size
+      || getAttr(item, 'size')
+      || getAttr(item, 'length')
+      || item['size']
       || null;
-    return {
-      title: item.title || '',
+    const size = rawSize && Number(rawSize) > 0 ? rawSize : null;
+
+    const pubDate = item.pubDate || '';
+    let agedays = null;
+    if (pubDate) {
+      const ms = Date.now() - new Date(pubDate).getTime();
+      agedays = Math.floor(ms / 86400000);
+    }
+
+    const peers   = parseInt(getAttr(item, 'peers') || getAttr(item, 'seeders') || '0') || null;
+    const grabs   = parseInt(getAttr(item, 'grabs') || getAttr(item, 'downloadvolumefactor') || '0') || null;
+    const catId   = getAttr(item, 'category') || '';
+
+    const title    = item.title || '';
+    const quality  = detectQuality(title);
+    const language = detectLanguage(title);
+
+    const result = {
+      title,
       size,
-      pubDate: item.pubDate || '',
+      pubDate,
+      agedays,
       link: item.link || item.enclosure?.['@attributes']?.url || item.enclosure?.url || '',
       indexer: indexerName || '',
+      peers,
+      grabs,
+      quality,
+      language,
+      catId,
     };
+    result.score = scoreRelease(result);
+    return result;
   }).filter(r => r.title);
 }
 

@@ -127,4 +127,73 @@ router.post('/test-connection',
   }
 );
 
+
+// ── Custom Formats ──────────────────────────────────────────────────────────
+
+// GET /api/settings/custom-formats
+router.get('/custom-formats', requireAdmin, (req, res) => {
+  const db = getDB();
+  const raw = db.prepare("SELECT value FROM settings WHERE key = 'custom_formats'").get()?.value;
+  res.json({ formats: raw ? JSON.parse(raw) : [] });
+});
+
+// POST /api/settings/custom-formats
+router.post('/custom-formats', requireAdmin,
+  body('formats').isArray(),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    const db = getDB();
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('custom_formats', ?)").run(JSON.stringify(req.body.formats));
+    res.json({ success: true });
+  }
+);
+
+// POST /api/settings/import-custom-formats — import from Radarr/Sonarr JSON export
+router.post('/import-custom-formats', requireAdmin, async (req, res) => {
+  try {
+    const { source, data } = req.body; // source: 'radarr' | 'sonarr', data: parsed JSON array
+    if (!Array.isArray(data)) return res.status(400).json({ error: 'Expected array' });
+
+    // Normalize Radarr/Sonarr custom format structure to Streamline format
+    const formats = data.map(cf => ({
+      id: cf.id || Math.random().toString(36).slice(2),
+      name: cf.name,
+      score: cf.score || 0,
+      conditions: (cf.specifications || cf.formatTags || []).map(spec => {
+        // fields can be array or object depending on Radarr/Sonarr version
+        let value = spec.value || '';
+        if (!value && spec.fields) {
+          if (Array.isArray(spec.fields)) {
+            value = spec.fields.find(f => f.name === 'value')?.value || '';
+          } else if (typeof spec.fields === 'object') {
+            value = spec.fields.value || Object.values(spec.fields)[0] || '';
+          }
+        }
+        return {
+          type: spec.implementationName || spec.tagType || spec.type || 'unknown',
+          value: String(value),
+          negate: spec.negate || false,
+        };
+      }),
+    }));
+
+    const db = getDB();
+    // Merge with existing
+    const existing = JSON.parse(db.prepare("SELECT value FROM settings WHERE key = 'custom_formats'").get()?.value || '[]');
+    const merged = [...existing];
+    for (const f of formats) {
+      const idx = merged.findIndex(e => e.name === f.name);
+      if (idx >= 0) merged[idx] = f; else merged.push(f);
+    }
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('custom_formats', ?)").run(JSON.stringify(merged));
+    logger.info('Custom formats imported', { count: formats.length, source });
+    res.json({ success: true, imported: formats.length, total: merged.length });
+  } catch (err) {
+    logger.error('Custom format import failed', { error: err.message });
+    res.status(500).json({ error: 'Import failed: ' + err.message });
+  }
+});
+
 module.exports = router;
+
